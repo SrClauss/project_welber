@@ -32,6 +32,7 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 - `npm run build` - Creates an optimized production build
 - `npm start` - Runs the production server
 - `npm run lint` - Runs ESLint to check code quality
+- `npm run lint:fix` - Runs ESLint and automatically fixes fixable issues
 
 ## Learn More
 

@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "mercadopago-mcp-server": {
+      "url": "http://localhost:7380/mcp",
+      "headers": {
+        "Authorization": "Bearer ${env:MERCADO_PAGO_ACCESS_TOKEN}"
+      }
+    }
+  }
+}
