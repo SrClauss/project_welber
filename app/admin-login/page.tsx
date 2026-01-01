@@ -46,11 +46,8 @@ function AdminLoginContent() {
     
     try {
       // Import and wait for Firebase Auth initialization
-      const { initializeFirebaseAuth } = await import('../../lib/firebaseAuth');
+      const { initializeFirebaseAuth, auth } = await import('../../lib/firebaseAuth');
       await initializeFirebaseAuth();
-      
-      // Import auth after ensuring it's initialized
-      const { auth } = await import('../../lib/firebaseAuth');
       
       if (!auth) {
         setError('Firebase Auth não está configurado corretamente.');
