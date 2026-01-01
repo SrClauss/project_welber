@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { upsertPassagem } from "../../../../lib/viagemService";
 import type { Passagem, Percurso } from "../../types";
 
+// Force dynamic rendering for this route
+export const dynamic = 'force-dynamic';
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
