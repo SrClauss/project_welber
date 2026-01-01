@@ -193,6 +193,22 @@ function AdminPanelContent() {
     }
   };
 
+  const formatDate = (dateString: string, format: 'full' | 'short' = 'full') => {
+    const date = new Date(dateString);
+    if (format === 'short') {
+      return date.toLocaleDateString('pt-BR', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric'
+      });
+    }
+    return date.toLocaleDateString('pt-BR', { 
+      day: '2-digit', 
+      month: 'long', 
+      year: 'numeric' 
+    });
+  };
+
   const getStats = () => {
     const totalViagens = filteredViagens.length;
     const totalPassagens = filteredViagens.reduce((sum, v) => sum + v.passagens.length, 0);
@@ -364,11 +380,7 @@ function AdminPanelContent() {
                 <MenuItem value="all">Todas as Datas</MenuItem>
                 {availableDates.map((date) => (
                   <MenuItem key={date} value={date}>
-                    {new Date(date).toLocaleDateString('pt-BR', { 
-                      day: '2-digit', 
-                      month: 'long', 
-                      year: 'numeric' 
-                    })}
+                    {formatDate(date)}
                   </MenuItem>
                 ))}
               </TextField>
@@ -443,11 +455,7 @@ function AdminPanelContent() {
                       return (
                         <TableRow key={viagem.id} hover>
                           <TableCell>
-                            {new Date(viagem.dataViagem).toLocaleDateString('pt-BR', {
-                              day: '2-digit',
-                              month: 'short',
-                              year: 'numeric'
-                            })}
+                            {formatDate(viagem.dataViagem, 'short')}
                           </TableCell>
                           <TableCell>
                             <Typography variant="body2" sx={{ fontSize: '0.875rem' }}>

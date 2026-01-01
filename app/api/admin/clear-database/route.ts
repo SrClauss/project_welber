@@ -19,9 +19,11 @@ export async function POST(request: Request) {
     const idToken = authHeader.split('Bearer ')[1];
     
     // Basic token validation - check format and length
-    // Note: Without firebase-admin, we rely on Firestore security rules
-    // to enforce proper authentication. The token is validated when
-    // Firestore operations are performed.
+    // Note: This route is kept for backwards compatibility but operations
+    // are now performed client-side. Token validation is minimal here
+    // because Firestore security rules enforce proper authentication.
+    // In production, consider using Firebase Admin SDK for server-side
+    // token verification if you need server-side operations.
     if (!idToken || idToken.length < 50) {
       return NextResponse.json({ 
         error: 'Token inválido' 
