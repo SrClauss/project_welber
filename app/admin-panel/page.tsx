@@ -57,10 +57,21 @@ function AdminPanelContent() {
     setMessage(null);
 
     try {
+      // Get the user's ID token
+      if (!auth || !user) {
+        setMessage({ type: 'error', text: 'Usuário não autenticado' });
+        setClearing(false);
+        return;
+      }
+
+      const { getIdToken } = await import('firebase/auth');
+      const idToken = await getIdToken(user);
+
       const response = await fetch('/api/admin/clear-database', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${idToken}`,
         },
       });
 

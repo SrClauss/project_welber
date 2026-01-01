@@ -20,27 +20,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let unsubscribe: (() => void) | undefined;
+
     if (!auth) {
       setLoading(false);
       return;
     }
 
     // Dynamic import to avoid loading firebase/auth on server
-    import('firebase/auth').then(({ onAuthStateChanged }) => {
-      if (!auth) {
-        setLoading(false);
-        return;
-      }
-      const unsubscribe = onAuthStateChanged(auth, (user) => {
-        setUser(user);
+    import('firebase/auth')
+      .then(({ onAuthStateChanged }) => {
+        if (!auth) {
+          setLoading(false);
+          return;
+        }
+        unsubscribe = onAuthStateChanged(auth, (user) => {
+          setUser(user);
+          setLoading(false);
+        });
+      })
+      .catch((error) => {
+        console.error('Error loading Firebase auth:', error);
         setLoading(false);
       });
 
-      return () => unsubscribe();
-    }).catch((error) => {
-      console.error('Error loading Firebase auth:', error);
-      setLoading(false);
-    });
+    return () => {
+      if (unsubscribe) {
+        unsubscribe();
+      }
+    };
   }, []);
 
   return (

@@ -4,10 +4,37 @@ import { NextResponse } from 'next/server';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-export async function POST() {
+export async function POST(request: Request) {
   try {
+    // Authentication check: verify Firebase ID token from Authorization header
+    const authHeader = request.headers.get('Authorization');
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return NextResponse.json({ 
+        error: 'Não autorizado. Token de autenticação ausente.' 
+      }, { status: 401 });
+    }
+
+    const idToken = authHeader.split('Bearer ')[1];
+    
     // Dynamic import to avoid issues during build
     const { firestore } = await import('../../../../lib/firebaseAdmin');
+    const admin = await import('../../../../lib/firebaseAdmin').then(m => m.default);
+    
+    // Verify the ID token
+    if (!admin || !admin.auth) {
+      return NextResponse.json({ 
+        error: 'Serviço de autenticação não configurado' 
+      }, { status: 503 });
+    }
+
+    try {
+      await admin.auth().verifyIdToken(idToken);
+    } catch (error) {
+      console.error('Token verification failed:', error);
+      return NextResponse.json({ 
+        error: 'Token inválido ou expirado' 
+      }, { status: 401 });
+    }
     
     // Get all documents from the viagens collection
     const viagensSnapshot = await firestore.collection('viagens').get();
@@ -23,7 +50,7 @@ export async function POST() {
     const batch = firestore.batch();
     let deleteCount = 0;
 
-    viagensSnapshot.docs.forEach((doc: any) => {
+    viagensSnapshot.docs.forEach((doc: { ref: unknown }) => {
       batch.delete(doc.ref);
       deleteCount++;
     });

@@ -1,6 +1,10 @@
 // Firebase Authentication configuration
 // Using dynamic imports to avoid loading Firebase client SDK on server
 
+// Note: Firebase configuration values (authDomain, projectId, etc.) are meant to be public
+// and can be safely committed to the repository. Only the API key needs to be in env vars.
+// See: https://firebase.google.com/docs/projects/learn-more#config-files-objects
+
 import type { Auth, GoogleAuthProvider } from 'firebase/auth';
 
 let auth: Auth | null = null;
@@ -16,12 +20,14 @@ async function initializeFirebaseAuth() {
     return; // Already initialized
   }
 
+  // Use NEXT_PUBLIC_ prefix for client-side environment variables
   const firebaseApiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY || process.env.FIREBASE_API_KEY;
   if (!firebaseApiKey) {
     console.warn('Missing Firebase API key. Set NEXT_PUBLIC_FIREBASE_API_KEY or FIREBASE_API_KEY in your environment.');
     return;
   }
 
+  // Firebase config values are public and safe to commit (they identify your Firebase project)
   const firebaseConfig = {
     apiKey: String(firebaseApiKey),
     authDomain: "wf-transportes.firebaseapp.com",
