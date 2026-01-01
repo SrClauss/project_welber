@@ -48,8 +48,7 @@ To learn more about Next.js, check out the following resources:
 - **TypeScript** - Type-safe JavaScript
 - **Tailwind CSS 4** - Utility-first CSS framework
 - **Material-UI** - React component library
-- **Firebase** - Authentication and Firestore database
-- **Firebase Admin** - Server-side Firebase SDK
+- **Firebase** - Authentication and Firestore database (client SDK)
 - **ESLint** - Code linting
 
 ## Admin Features
@@ -71,20 +70,19 @@ The admin panel provides the following functionality:
 
 ### Environment Variables
 
-To enable Firebase authentication, set the following environment variables:
+To enable Firebase authentication and database operations, set the following environment variables:
 
 ```bash
-# Client-side Firebase configuration (required)
+# Client-side Firebase configuration (required for authentication and Firestore)
 NEXT_PUBLIC_FIREBASE_API_KEY=your_api_key_here
 
-# Server-side Firebase Admin (required for database operations)
-FIREBASE_SA_BASE64=your_base64_encoded_service_account_json
-
-# Other environment variables
-MAX_LUGARES=number_of_max_passengers
+# Maximum number of passengers per trip
+MAX_LUGARES=15
 ```
 
-**Note**: Firebase configuration values (authDomain, projectId, etc.) are already configured in the code and are safe to commit as they are public identifiers for your Firebase project.
+**Note**: 
+- Firebase configuration values (authDomain, projectId, etc.) are already configured in the code and are safe to commit as they are public identifiers for your Firebase project.
+- The application uses Firebase client SDK for both authentication and Firestore operations, eliminating the need for firebase-admin and FIREBASE_SA_BASE64.
 
 ## Security
 
