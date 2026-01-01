@@ -118,7 +118,7 @@ export class Viagem {
           checkout: (p as any).checkout,
         }))
       : [];
-    return new Viagem(data.dataViagem, data.percurso as Percurso, passagens, doc.id);
+    return new Viagem(data.dataViagem as string, data.percurso as Percurso, passagens, doc.id);
   }
 
   toFirestore() {
