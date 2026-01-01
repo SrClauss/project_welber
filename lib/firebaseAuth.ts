@@ -5,10 +5,9 @@
 // and can be safely committed to the repository. Only the API key needs to be in env vars.
 // See: https://firebase.google.com/docs/projects/learn-more#config-files-objects
 
-import type { Auth, GoogleAuthProvider } from 'firebase/auth';
+import type { Auth } from 'firebase/auth';
 
 let auth: Auth | null = null;
-let googleProvider: GoogleAuthProvider | null = null;
 
 async function initializeFirebaseAuth() {
   if (typeof window === 'undefined') {
@@ -41,14 +40,13 @@ async function initializeFirebaseAuth() {
   try {
     // Dynamic imports to avoid loading on server
     const { initializeApp, getApps } = await import('firebase/app');
-    const { getAuth, GoogleAuthProvider } = await import('firebase/auth');
+    const { getAuth } = await import('firebase/auth');
     
     // Initialize Firebase if not already initialized
     const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
     
     // Initialize Firebase Auth
     auth = getAuth(app);
-    googleProvider = new GoogleAuthProvider();
   } catch (error) {
     console.error('Error initializing Firebase Auth:', error);
   }
@@ -59,5 +57,5 @@ if (typeof window !== 'undefined') {
   void initializeFirebaseAuth();
 }
 
-export { auth, googleProvider, initializeFirebaseAuth };
+export { auth, initializeFirebaseAuth };
 

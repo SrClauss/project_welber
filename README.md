@@ -56,9 +56,9 @@ To learn more about Next.js, check out the following resources:
 
 ### Admin Authentication
 
-The project includes an administrative interface protected by Google OAuth authentication:
+The project includes an administrative interface protected by Firebase email/password authentication:
 
-- **Admin Login**: `/admin-login` - Google OAuth login page
+- **Admin Login**: `/admin-login` - Email and password login page
 - **Admin Panel**: `/admin-panel` - Protected admin dashboard
 
 ### Database Management

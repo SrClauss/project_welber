@@ -12,8 +12,10 @@ import {
   CssBaseline,
   CircularProgress,
   Alert,
+  TextField,
+  Stack,
 } from '@mui/material';
-import { auth, googleProvider } from '../../lib/firebaseAuth';
+import { auth } from '../../lib/firebaseAuth';
 import { useAuth, AuthProvider } from '../../lib/AuthContext';
 import theme from '../theme';
 
@@ -22,6 +24,8 @@ function AdminLoginContent() {
   const { user, loading: authLoading } = useAuth();
   const [error, setError] = useState<string | null>(null);
   const [signingIn, setSigningIn] = useState(false);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
 
   useEffect(() => {
     // If already authenticated, redirect to admin panel
@@ -30,20 +34,40 @@ function AdminLoginContent() {
     }
   }, [user, authLoading, router]);
 
-  const handleGoogleSignIn = async () => {
-    if (!auth || !googleProvider) {
+  const handleEmailSignIn = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!auth) {
       setError('Firebase Auth não está configurado corretamente.');
       return;
     }
+
+    if (!email || !password) {
+      setError('Por favor, preencha email e senha.');
+      return;
+    }
+
     setError(null);
     setSigningIn(true);
+    
     try {
-      const { signInWithPopup } = await import('firebase/auth');
-      await signInWithPopup(auth, googleProvider);
+      const { signInWithEmailAndPassword } = await import('firebase/auth');
+      await signInWithEmailAndPassword(auth, email, password);
       // Redirect will happen via useEffect
-    } catch (err) {
-      console.error('Error signing in with Google:', err);
-      setError('Erro ao fazer login com Google. Por favor, tente novamente.');
+    } catch (err: unknown) {
+      console.error('Error signing in with email:', err);
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      
+      // Provide user-friendly error messages
+      if (errorMessage.includes('user-not-found') || errorMessage.includes('wrong-password')) {
+        setError('Email ou senha incorretos.');
+      } else if (errorMessage.includes('invalid-email')) {
+        setError('Email inválido.');
+      } else if (errorMessage.includes('too-many-requests')) {
+        setError('Muitas tentativas. Tente novamente mais tarde.');
+      } else {
+        setError('Erro ao fazer login. Por favor, tente novamente.');
+      }
       setSigningIn(false);
     }
   };
@@ -86,7 +110,6 @@ function AdminLoginContent() {
             sx={{
               p: 6,
               borderRadius: 4,
-              textAlign: 'center',
               background: 'rgba(255, 255, 255, 0.95)',
               boxShadow: '0 40px 100px rgba(0,0,0,0.1)',
             }}
@@ -97,6 +120,7 @@ function AdminLoginContent() {
                 mb: 2,
                 fontWeight: 700,
                 color: '#1a1a1a',
+                textAlign: 'center',
               }}
             >
               Painel Administrativo
@@ -106,9 +130,10 @@ function AdminLoginContent() {
               sx={{
                 mb: 4,
                 color: '#666',
+                textAlign: 'center',
               }}
             >
-              Faça login com sua conta Google para acessar o painel administrativo
+              Faça login com email e senha para acessar o painel administrativo
             </Typography>
 
             {error && (
@@ -117,33 +142,83 @@ function AdminLoginContent() {
               </Alert>
             )}
 
-            <Button
-              variant="contained"
-              size="large"
-              onClick={handleGoogleSignIn}
-              disabled={signingIn}
-              sx={{
-                py: 2,
-                px: 4,
-                bgcolor: '#D4AF37',
-                color: '#fff',
-                fontSize: '1rem',
-                fontWeight: 600,
-                boxShadow: '0 15px 30px rgba(212, 175, 55, 0.3)',
-                '&:hover': {
-                  bgcolor: '#b8962d',
-                },
-                '&:disabled': {
-                  bgcolor: '#ccc',
-                },
-              }}
-            >
-              {signingIn ? (
-                <CircularProgress size={24} sx={{ color: '#fff' }} />
-              ) : (
-                'Entrar com Google'
-              )}
-            </Button>
+            <form onSubmit={handleEmailSignIn}>
+              <Stack spacing={3}>
+                <TextField
+                  label="Email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  fullWidth
+                  required
+                  autoComplete="email"
+                  disabled={signingIn}
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      '&:hover fieldset': {
+                        borderColor: '#D4AF37',
+                      },
+                      '&.Mui-focused fieldset': {
+                        borderColor: '#D4AF37',
+                      },
+                    },
+                    '& .MuiInputLabel-root.Mui-focused': {
+                      color: '#D4AF37',
+                    },
+                  }}
+                />
+                <TextField
+                  label="Senha"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  fullWidth
+                  required
+                  autoComplete="current-password"
+                  disabled={signingIn}
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      '&:hover fieldset': {
+                        borderColor: '#D4AF37',
+                      },
+                      '&.Mui-focused fieldset': {
+                        borderColor: '#D4AF37',
+                      },
+                    },
+                    '& .MuiInputLabel-root.Mui-focused': {
+                      color: '#D4AF37',
+                    },
+                  }}
+                />
+                <Button
+                  type="submit"
+                  variant="contained"
+                  size="large"
+                  fullWidth
+                  disabled={signingIn}
+                  sx={{
+                    py: 2,
+                    bgcolor: '#D4AF37',
+                    color: '#fff',
+                    fontSize: '1rem',
+                    fontWeight: 600,
+                    boxShadow: '0 15px 30px rgba(212, 175, 55, 0.3)',
+                    '&:hover': {
+                      bgcolor: '#b8962d',
+                    },
+                    '&:disabled': {
+                      bgcolor: '#ccc',
+                    },
+                  }}
+                >
+                  {signingIn ? (
+                    <CircularProgress size={24} sx={{ color: '#fff' }} />
+                  ) : (
+                    'Entrar'
+                  )}
+                </Button>
+              </Stack>
+            </form>
 
             <Typography
               variant="caption"
@@ -151,6 +226,7 @@ function AdminLoginContent() {
                 mt: 3,
                 display: 'block',
                 color: '#999',
+                textAlign: 'center',
               }}
             >
               Acesso restrito a administradores
