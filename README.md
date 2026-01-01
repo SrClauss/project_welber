@@ -74,7 +74,10 @@ To enable Firebase authentication and database operations, set the following env
 
 ```bash
 # Client-side Firebase configuration (required for authentication and Firestore)
+# Use NEXT_PUBLIC_FIREBASE_API_KEY for client-side access, or FIREBASE_API_KEY as fallback
 NEXT_PUBLIC_FIREBASE_API_KEY=your_api_key_here
+# OR
+FIREBASE_API_KEY=your_api_key_here
 
 # Maximum number of passengers per trip
 MAX_LUGARES=15
@@ -83,6 +86,7 @@ MAX_LUGARES=15
 **Note**: 
 - Firebase configuration values (authDomain, projectId, etc.) are already configured in the code and are safe to commit as they are public identifiers for your Firebase project.
 - The application uses Firebase client SDK for both authentication and Firestore operations, eliminating the need for firebase-admin and FIREBASE_SA_BASE64.
+- Both `NEXT_PUBLIC_FIREBASE_API_KEY` and `FIREBASE_API_KEY` are supported. Next.js will automatically expose `NEXT_PUBLIC_*` variables to the browser.
 
 ## Security
 

@@ -11,9 +11,10 @@ async function initializeFirestore() {
   }
 
   // Use NEXT_PUBLIC_ prefix for client-side environment variables
-  const firebaseApiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
+  // Fallback to FIREBASE_API_KEY for backwards compatibility
+  const firebaseApiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY || process.env.FIREBASE_API_KEY;
   if (!firebaseApiKey) {
-    throw new Error('Missing Firebase API key. Set NEXT_PUBLIC_FIREBASE_API_KEY in your environment.');
+    throw new Error('Missing Firebase API key. Set NEXT_PUBLIC_FIREBASE_API_KEY or FIREBASE_API_KEY in your environment.');
   }
 
   // Firebase config values are public and safe to commit (they identify your Firebase project)
