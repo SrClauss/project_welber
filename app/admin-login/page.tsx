@@ -162,6 +162,10 @@ function AdminLoginContent() {
   );
 }
 
+// Note: Each admin page has its own AuthProvider wrapper instead of wrapping at the root level.
+// This is intentional to avoid loading Firebase Auth context on non-admin pages and API routes,
+// which could cause build-time issues. Firebase Auth maintains a single session across the app,
+// so each AuthProvider will correctly see the same authenticated user.
 export default function AdminLoginPage() {
   return (
     <AuthProvider>
