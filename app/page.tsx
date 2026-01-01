@@ -224,8 +224,8 @@ export default function Home() {
         <Container maxWidth="lg" sx={{ position: 'relative', zIndex: 10, display: 'flex', justifyContent: 'center' }}>
           <Box sx={{ width: '100%', maxWidth: 1100, display: 'flex', gap: 6, flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', py: { xs: 2, md: 6 } }}>
 
-            {/* Narrow reservation card (centered) */}
-            <Paper elevation={0} sx={{ width: { xs: '100%', md: 420 }, p: { xs: 3, md: 6 }, borderRadius: 4, background: 'rgba(255,255,255,0.95)', boxShadow: '0 40px 100px rgba(0,0,0,0.06)' }}>
+            {/* Reservation card (fills container width on large screens) */}
+            <Paper elevation={0} sx={{ width: '100%', p: { xs: 3, md: 6 }, borderRadius: 4, background: 'rgba(255,255,255,0.95)', boxShadow: '0 40px 100px rgba(0,0,0,0.06)' }}>
               <Stack spacing={2} sx={{ alignItems: 'stretch' }}>
                 <Stack direction="row" justifyContent="space-between">
                   <Typography variant="caption" sx={{ color: '#999', fontWeight: 800, letterSpacing: 1 }}>SELECIONE A ROTA</Typography>
