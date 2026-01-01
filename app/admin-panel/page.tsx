@@ -17,17 +17,53 @@ import {
   DialogContent,
   DialogContentText,
   DialogActions,
+  TextField,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Chip,
+  Stack,
+  Card,
+  CardContent,
+  MenuItem,
 } from '@mui/material';
 import { auth } from '../../lib/firebaseAuth';
 import { useAuth, AuthProvider } from '../../lib/AuthContext';
 import theme from '../theme';
 
+interface Cliente {
+  name: string;
+  cpfCnpj: string;
+  email?: string;
+}
+
+interface Passagem {
+  cliente: Cliente;
+  paga: boolean;
+  externalReference?: string;
+}
+
+interface Viagem {
+  id: string;
+  dataViagem: string;
+  percurso: string;
+  passagens: Passagem[];
+}
+
 function AdminPanelContent() {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
   const [clearing, setClearing] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [viagens, setViagens] = useState<Viagem[]>([]);
+  const [filteredViagens, setFilteredViagens] = useState<Viagem[]>([]);
+  const [dateFilter, setDateFilter] = useState<string>('all');
+  const [availableDates, setAvailableDates] = useState<string[]>([]);
 
   useEffect(() => {
     // If not authenticated, redirect to login
@@ -35,6 +71,80 @@ function AdminPanelContent() {
       router.push('/admin-login');
     }
   }, [user, authLoading, router]);
+
+  useEffect(() => {
+    // Load viagens data
+    if (user) {
+      loadViagens();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
+
+  useEffect(() => {
+    // Filter viagens by date
+    if (dateFilter === 'all') {
+      setFilteredViagens(viagens);
+    } else {
+      setFilteredViagens(viagens.filter(v => v.dataViagem === dateFilter));
+    }
+  }, [dateFilter, viagens]);
+
+  const loadViagens = async () => {
+    setLoading(true);
+    try {
+      if (!auth || !user) {
+        setMessage({ type: 'error', text: 'Usuário não autenticado' });
+        setLoading(false);
+        return;
+      }
+
+      const { getIdToken } = await import('firebase/auth');
+      const idToken = await getIdToken(user);
+
+      const response = await fetch('/api/admin/viagens', {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${idToken}`,
+        },
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Erro ao carregar viagens');
+      }
+
+      const data = await response.json();
+      const viagensData: Viagem[] = data.viagens || [];
+      
+      setViagens(viagensData);
+      
+      // Extract unique dates for filter
+      const dates = [...new Set(viagensData.map((v: Viagem) => v.dataViagem))].sort();
+      setAvailableDates(dates);
+      
+    } catch (err) {
+      console.error('Error loading viagens:', err);
+      setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Erro ao carregar viagens' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const formatDate = (dateString: string, format: 'full' | 'short' = 'full') => {
+    const date = new Date(dateString);
+    if (format === 'short') {
+      return date.toLocaleDateString('pt-BR', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric'
+      });
+    }
+    return date.toLocaleDateString('pt-BR', { 
+      day: '2-digit', 
+      month: 'long', 
+      year: 'numeric' 
+    });
+  };
 
   const handleSignOut = async () => {
     if (!auth) {
@@ -57,7 +167,6 @@ function AdminPanelContent() {
     setMessage(null);
 
     try {
-      // Get the user's ID token
       if (!auth || !user) {
         setMessage({ type: 'error', text: 'Usuário não autenticado' });
         setClearing(false);
@@ -79,6 +188,8 @@ function AdminPanelContent() {
 
       if (response.ok) {
         setMessage({ type: 'success', text: data.message || 'Banco de dados limpo com sucesso!' });
+        // Reload data after clearing
+        await loadViagens();
       } else {
         setMessage({ type: 'error', text: data.error || 'Erro ao limpar banco de dados' });
       }
@@ -89,6 +200,18 @@ function AdminPanelContent() {
       setClearing(false);
     }
   };
+
+  const getStats = () => {
+    const totalViagens = filteredViagens.length;
+    const totalPassagens = filteredViagens.reduce((sum, v) => sum + v.passagens.length, 0);
+    const totalPagas = filteredViagens.reduce((sum, v) => 
+      sum + v.passagens.filter(p => p.paga).length, 0);
+    const totalPendentes = totalPassagens - totalPagas;
+    
+    return { totalViagens, totalPassagens, totalPagas, totalPendentes };
+  };
+
+  const stats = getStats();
 
   if (authLoading) {
     return (
@@ -123,7 +246,8 @@ function AdminPanelContent() {
           py: 6,
         }}
       >
-        <Container maxWidth="md">
+        <Container maxWidth="lg">
+          {/* Header */}
           <Paper
             elevation={3}
             sx={{
@@ -131,9 +255,10 @@ function AdminPanelContent() {
               borderRadius: 4,
               background: 'rgba(255, 255, 255, 0.95)',
               boxShadow: '0 40px 100px rgba(0,0,0,0.1)',
+              mb: 4,
             }}
           >
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
               <Typography
                 variant="h4"
                 sx={{
@@ -159,7 +284,7 @@ function AdminPanelContent() {
               </Button>
             </Box>
 
-            <Box sx={{ mb: 4 }}>
+            <Box sx={{ mb: 2 }}>
               <Typography variant="body1" sx={{ color: '#666', mb: 1 }}>
                 Bem-vindo, <strong>{user.displayName || user.email}</strong>
               </Typography>
@@ -167,60 +292,225 @@ function AdminPanelContent() {
                 {user.email}
               </Typography>
             </Box>
+          </Paper>
 
-            {message && (
-              <Alert severity={message.type} sx={{ mb: 3 }}>
-                {message.text}
-              </Alert>
-            )}
+          {message && (
+            <Alert severity={message.type} sx={{ mb: 3 }}>
+              {message.text}
+            </Alert>
+          )}
 
-            <Paper
-              variant="outlined"
-              sx={{
-                p: 3,
-                borderRadius: 2,
-                borderColor: '#eee',
-              }}
-            >
-              <Typography
-                variant="h6"
-                sx={{
-                  mb: 2,
-                  fontWeight: 600,
-                  color: '#1a1a1a',
-                }}
+          {/* Statistics Cards */}
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 3, mb: 4 }}>
+            <Box sx={{ flex: '1 1 200px', minWidth: 200 }}>
+              <Card>
+                <CardContent>
+                  <Typography variant="h4" sx={{ fontWeight: 700, color: '#D4AF37', mb: 1 }}>
+                    {stats.totalViagens}
+                  </Typography>
+                  <Typography variant="body2" sx={{ color: '#666' }}>
+                    Total de Viagens
+                  </Typography>
+                </CardContent>
+              </Card>
+            </Box>
+            <Box sx={{ flex: '1 1 200px', minWidth: 200 }}>
+              <Card>
+                <CardContent>
+                  <Typography variant="h4" sx={{ fontWeight: 700, color: '#1976d2', mb: 1 }}>
+                    {stats.totalPassagens}
+                  </Typography>
+                  <Typography variant="body2" sx={{ color: '#666' }}>
+                    Total de Passagens
+                  </Typography>
+                </CardContent>
+              </Card>
+            </Box>
+            <Box sx={{ flex: '1 1 200px', minWidth: 200 }}>
+              <Card>
+                <CardContent>
+                  <Typography variant="h4" sx={{ fontWeight: 700, color: '#4caf50', mb: 1 }}>
+                    {stats.totalPagas}
+                  </Typography>
+                  <Typography variant="body2" sx={{ color: '#666' }}>
+                    Passagens Pagas
+                  </Typography>
+                </CardContent>
+              </Card>
+            </Box>
+            <Box sx={{ flex: '1 1 200px', minWidth: 200 }}>
+              <Card>
+                <CardContent>
+                  <Typography variant="h4" sx={{ fontWeight: 700, color: '#ff9800', mb: 1 }}>
+                    {stats.totalPendentes}
+                  </Typography>
+                  <Typography variant="body2" sx={{ color: '#666' }}>
+                    Passagens Pendentes
+                  </Typography>
+                </CardContent>
+              </Card>
+            </Box>
+          </Box>
+
+          {/* Filters and Actions */}
+          <Paper
+            elevation={2}
+            sx={{
+              p: 3,
+              borderRadius: 4,
+              mb: 3,
+            }}
+          >
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="center">
+              <TextField
+                select
+                label="Filtrar por Data"
+                value={dateFilter}
+                onChange={(e) => setDateFilter(e.target.value)}
+                sx={{ minWidth: 250 }}
               >
-                Gerenciamento do Banco de Dados
-              </Typography>
-              <Typography
-                variant="body2"
-                sx={{
-                  mb: 3,
-                  color: '#666',
-                }}
+                <MenuItem value="all">Todas as Datas</MenuItem>
+                {availableDates.map((date) => (
+                  <MenuItem key={date} value={date}>
+                    {formatDate(date)}
+                  </MenuItem>
+                ))}
+              </TextField>
+              
+              <Box sx={{ flexGrow: 1 }} />
+              
+              <Button
+                variant="outlined"
+                onClick={loadViagens}
+                disabled={loading}
+                sx={{ minWidth: 120 }}
               >
-                Esta ação irá remover todas as viagens e passagens do banco de dados. Esta operação não pode ser desfeita.
-              </Typography>
+                {loading ? <CircularProgress size={20} /> : 'Atualizar'}
+              </Button>
+              
               <Button
                 variant="contained"
                 color="error"
                 onClick={() => setConfirmOpen(true)}
                 disabled={clearing}
-                sx={{
-                  py: 1.5,
-                  px: 3,
-                }}
               >
-                {clearing ? (
-                  <>
-                    <CircularProgress size={20} sx={{ color: '#fff', mr: 1 }} />
-                    Limpando...
-                  </>
-                ) : (
-                  'Limpar Banco de Dados'
-                )}
+                {clearing ? <CircularProgress size={20} sx={{ color: '#fff' }} /> : 'Limpar Banco'}
               </Button>
-            </Paper>
+            </Stack>
+          </Paper>
+
+          {/* Viagens Table */}
+          <Paper
+            elevation={2}
+            sx={{
+              borderRadius: 4,
+              overflow: 'hidden',
+            }}
+          >
+            <Box sx={{ p: 3, bgcolor: '#fafafa', borderBottom: '1px solid #eee' }}>
+              <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                Viagens e Passagens
+              </Typography>
+              <Typography variant="caption" sx={{ color: '#666' }}>
+                {filteredViagens.length} viagem(ns) encontrada(s)
+              </Typography>
+            </Box>
+
+            {loading ? (
+              <Box sx={{ p: 6, display: 'flex', justifyContent: 'center' }}>
+                <CircularProgress />
+              </Box>
+            ) : filteredViagens.length === 0 ? (
+              <Box sx={{ p: 6, textAlign: 'center' }}>
+                <Typography variant="body1" sx={{ color: '#999' }}>
+                  Nenhuma viagem encontrada
+                </Typography>
+              </Box>
+            ) : (
+              <TableContainer>
+                <Table>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell><strong>Data</strong></TableCell>
+                      <TableCell><strong>Percurso</strong></TableCell>
+                      <TableCell align="center"><strong>Passagens</strong></TableCell>
+                      <TableCell align="center"><strong>Pagas</strong></TableCell>
+                      <TableCell align="center"><strong>Pendentes</strong></TableCell>
+                      <TableCell><strong>Passageiros</strong></TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {filteredViagens.map((viagem) => {
+                      const pagas = viagem.passagens.filter(p => p.paga).length;
+                      const pendentes = viagem.passagens.length - pagas;
+                      
+                      return (
+                        <TableRow key={viagem.id} hover>
+                          <TableCell>
+                            {formatDate(viagem.dataViagem, 'short')}
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant="body2" sx={{ fontSize: '0.875rem' }}>
+                              {viagem.percurso}
+                            </Typography>
+                          </TableCell>
+                          <TableCell align="center">
+                            <Chip 
+                              label={viagem.passagens.length} 
+                              size="small" 
+                              color="primary"
+                            />
+                          </TableCell>
+                          <TableCell align="center">
+                            <Chip 
+                              label={pagas} 
+                              size="small" 
+                              color="success"
+                            />
+                          </TableCell>
+                          <TableCell align="center">
+                            <Chip 
+                              label={pendentes} 
+                              size="small" 
+                              color="warning"
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <Box>
+                              {viagem.passagens.map((passagem, idx) => (
+                                <Box 
+                                  key={idx} 
+                                  sx={{ 
+                                    display: 'flex', 
+                                    alignItems: 'center', 
+                                    gap: 1, 
+                                    mb: 0.5,
+                                    fontSize: '0.875rem'
+                                  }}
+                                >
+                                  <Typography variant="caption" sx={{ minWidth: 150 }}>
+                                    {passagem.cliente.name}
+                                  </Typography>
+                                  <Typography variant="caption" sx={{ color: '#999', minWidth: 120 }}>
+                                    {passagem.cliente.cpfCnpj}
+                                  </Typography>
+                                  <Chip
+                                    label={passagem.paga ? 'Paga' : 'Pendente'}
+                                    size="small"
+                                    color={passagem.paga ? 'success' : 'warning'}
+                                    sx={{ height: 20, fontSize: '0.7rem' }}
+                                  />
+                                </Box>
+                              ))}
+                            </Box>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            )}
           </Paper>
         </Container>
       </Box>

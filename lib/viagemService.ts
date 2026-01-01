@@ -1,21 +1,33 @@
-// firestore é requerido dinamicamente para evitar erro quando firebase-admin não estiver instalado
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let firestore: any;
-try {
-   
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  firestore = require('./firebaseAdmin').firestore;
-} catch {
-  firestore = {
-    collection() {
-      throw new Error('firebase-admin não configurado (instale/configure FIREBASE_SA_BASE64)');
-    }
-  };
-}
+// Server-side viagem service using Firebase client SDK
 import { Viagem, Passagem, Percurso } from "../app/api/types";
 import { isValidCPF } from "../app/api/utils";
 
 export type UpsertResult = { action: "created" | "updated"; viagemId: string };
+
+// Initialize Firebase client SDK for server-side use
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let firestore: any = null;
+
+async function getFirestore() {
+  if (firestore) return firestore;
+  
+  const { initializeApp, getApps } = await import('firebase/app');
+  const { getFirestore: getFirestoreInstance } = await import('firebase/firestore');
+  
+  const firebaseConfig = {
+    apiKey: process.env.FIREBASE_API_KEY || process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+    authDomain: "wf-transportes.firebaseapp.com",
+    projectId: "wf-transportes",
+    storageBucket: "wf-transportes.firebasestorage.app",
+    messagingSenderId: "332399091530",
+    appId: "1:332399091530:web:ccb5da2a8c6833d02502d7"
+  };
+
+  const apps = getApps();
+  const app = apps.length > 0 ? apps[0] : initializeApp(firebaseConfig);
+  firestore = getFirestoreInstance(app);
+  return firestore;
+}
 
 function parseMaxLugares(): number {
   const max = Number(process.env.MAX_LUGARES);
@@ -29,23 +41,38 @@ function parseMaxLugares(): number {
  * Encontra viagem por id
  */
 export async function findViagemById(id: string) {
-  const ref = firestore.collection("viagens").doc(id);
-  const snap = await ref.get();
-  if (!snap.exists) return null;
-  const v = Viagem.fromFirestoreDoc({ id: snap.id, data: () => snap.data() });
-  return { ref, snap, viagem: v };
+  const db = await getFirestore();
+  const { doc, getDoc } = await import('firebase/firestore');
+  
+  try {
+    const ref = doc(db, "viagens", id);
+    const snap = await getDoc(ref);
+    if (!snap.exists()) return null;
+    const v = Viagem.fromFirestoreDoc({ id: snap.id, data: () => snap.data() });
+    return { ref, snap, viagem: v };
+  } catch {
+    return null;
+  }
 }
 
 /**
  * Busca viagem por dataViagem + percurso (retorna primeira encontrada)
  */
 export async function findViagemByDateAndPercurso(dataViagem: string, percurso: Percurso) {
-  const q = firestore.collection("viagens").where("dataViagem", "==", dataViagem).where("percurso", "==", percurso).limit(1);
-  const snap = await q.get();
+  const db = await getFirestore();
+  const { collection, query, where, limit, getDocs } = await import('firebase/firestore');
+  
+  const q = query(
+    collection(db, "viagens"),
+    where("dataViagem", "==", dataViagem),
+    where("percurso", "==", percurso),
+    limit(1)
+  );
+  const snap = await getDocs(q);
   if (snap.empty) return null;
-  const doc = snap.docs[0];
-  const v = Viagem.fromFirestoreDoc({ id: doc.id, data: () => doc.data() });
-  return { ref: doc.ref, snap: doc, viagem: v };
+  const docSnap = snap.docs[0];
+  const v = Viagem.fromFirestoreDoc({ id: docSnap.id, data: () => docSnap.data() });
+  return { ref: docSnap.ref, snap: docSnap, viagem: v };
 }
 
 /**
@@ -54,25 +81,19 @@ export async function findViagemByDateAndPercurso(dataViagem: string, percurso: 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function addPassagemToViagemRef(ref: any, passagem: Passagem) {
   const max = parseMaxLugares();
+  const db = await getFirestore();
+  const { runTransaction } = await import('firebase/firestore');
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  await firestore.runTransaction(async (tx: any) => {
+  await runTransaction(db, async (tx) => {
     const snap = await tx.get(ref);
-    if (!snap.exists) {
-      throw new Error("Viagem não encontrada na transação");
+    if (!snap.exists()) throw new Error("Viagem não encontrada");
+    const v = Viagem.fromFirestoreDoc({ id: snap.id, data: () => snap.data() as Record<string, unknown> });
+    if ((v.passagens?.length || 0) >= max) {
+      throw new Error(`Não é possível adicionar passagem. Limite de ${max} lugares atingido.`);
     }
-    const data = snap.data() || {};
-    const passagens: Passagem[] = Array.isArray(data.passagens) ? data.passagens : [];
-    if (passagens.length + 1 > max) {
-      throw new Error(`Limite de lugares (${max}) excedido`);
-    }
-    // validar cpf
-    if (!isValidCPF(passagem.cliente?.cpfCnpj)) {
-      throw new Error("CPF/CNPJ inválido para a passagem");
-    }
-
-    const nova = [...passagens, passagem];
-    tx.update(ref, { passagens: nova });
+    const newPassagens = [...(v.passagens || []), passagem];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    tx.update(ref, { passagens: newPassagens as any });
   });
 }
 
@@ -81,25 +102,29 @@ export async function addPassagemToViagemRef(ref: any, passagem: Passagem) {
  */
 export async function createViagemWithPassagem(dataViagem: string, percurso: Percurso, passagem: Passagem): Promise<string> {
   const max = parseMaxLugares();
+  
   // valida cpf
   if (!isValidCPF(passagem.cliente?.cpfCnpj)) {
     throw new Error("CPF/CNPJ inválido para a passagem");
   }
+  
   if (1 > max) throw new Error(`Limite de lugares (${max}) não permite incluir passagem`);
 
-  const ref = firestore.collection("viagens").doc();
+  const db = await getFirestore();
+  const { collection, addDoc } = await import('firebase/firestore');
+  
   const viagem = {
     dataViagem,
     percurso,
     passagens: [passagem],
   };
-  await ref.set(viagem);
-  return ref.id;
+
+  const docRef = await addDoc(collection(db, "viagens"), viagem);
+  return docRef.id;
 }
 
 /**
  * Upsert: cria ou atualiza viagem adicionando a passagem. Retorna action e viagemId.
- * - Se `viagemId` for fornecido, usa ela; caso contrário tenta achar por data+percurso.
  */
 export async function upsertPassagem(options: { viagemId?: string; dataViagem?: string; percurso?: Percurso; passagem: Passagem; }): Promise<UpsertResult> {
   const { viagemId, dataViagem, percurso, passagem } = options;
@@ -111,30 +136,14 @@ export async function upsertPassagem(options: { viagemId?: string; dataViagem?: 
 
   if (viagemId) {
     const found = await findViagemById(viagemId);
-    if (!found) {
-      // cria nova viagem usando id especificado
-      const ref = firestore.collection("viagens").doc(viagemId);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await firestore.runTransaction(async (tx: any) => {
-        const snap = await tx.get(ref);
-        if (snap.exists) {
-          // add to existing
-          const data = snap.data() || {};
-          const passagens: Passagem[] = Array.isArray(data.passagens) ? data.passagens : [];
-          const max = parseMaxLugares();
-          if (passagens.length + 1 > max) throw new Error(`Limite de lugares (${max}) excedido`);
-          tx.update(ref, { passagens: [...passagens, passagem] });
-        } else {
-          const max = parseMaxLugares();
-          if (1 > max) throw new Error(`Limite de lugares (${max}) não permite incluir passagem`);
-          tx.set(ref, { dataViagem: dataViagem ?? new Date().toISOString(), percurso: percurso ?? "São João dos Patos - Teresina", passagens: [passagem] });
-        }
-      });
-      return { action: "created", viagemId };
+    if (found) {
+      await addPassagemToViagemRef(found.ref, passagem);
+      return { action: "updated", viagemId };
     }
-    // exists: add
-    await addPassagemToViagemRef(found.ref, passagem);
-    return { action: "updated", viagemId: found.ref.id };
+    // If not found, create new
+    if (!dataViagem || !percurso) throw new Error("dataViagem e percurso são obrigatórios");
+    const id = await createViagemWithPassagem(dataViagem, percurso, passagem);
+    return { action: "created", viagemId: id };
   }
 
   // no viagemId: try find by date+percurso
@@ -142,7 +151,7 @@ export async function upsertPassagem(options: { viagemId?: string; dataViagem?: 
   const foundBy = await findViagemByDateAndPercurso(dataViagem, percurso);
   if (foundBy) {
     await addPassagemToViagemRef(foundBy.ref, passagem);
-    return { action: "updated", viagemId: foundBy.ref.id };
+    return { action: "updated", viagemId: foundBy.viagem.id || '' };
   }
 
   // create new

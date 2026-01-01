@@ -48,8 +48,7 @@ To learn more about Next.js, check out the following resources:
 - **TypeScript** - Type-safe JavaScript
 - **Tailwind CSS 4** - Utility-first CSS framework
 - **Material-UI** - React component library
-- **Firebase** - Authentication and Firestore database
-- **Firebase Admin** - Server-side Firebase SDK
+- **Firebase** - Authentication and Firestore database (client SDK)
 - **ESLint** - Code linting
 
 ## Admin Features
@@ -71,20 +70,25 @@ The admin panel provides the following functionality:
 
 ### Environment Variables
 
-To enable Firebase authentication, set the following environment variables:
+To enable Firebase authentication and database operations, set the following environment variables:
 
 ```bash
-# Client-side Firebase configuration (required)
-NEXT_PUBLIC_FIREBASE_API_KEY=your_api_key_here
+# Firebase API Key (única variável Firebase necessária)
+FIREBASE_API_KEY=your_firebase_api_key
 
-# Server-side Firebase Admin (required for database operations)
-FIREBASE_SA_BASE64=your_base64_encoded_service_account_json
+# Configuração da aplicação
+MAX_LUGARES=15
 
-# Other environment variables
-MAX_LUGARES=number_of_max_passengers
+# Mercado Pago (para pagamentos)
+NEXT_PUBLIC_MP_PUBLIC_KEY=your_mercado_pago_public_key
+MP_ACCESS_TOKEN=your_mercado_pago_access_token
 ```
 
-**Note**: Firebase configuration values (authDomain, projectId, etc.) are already configured in the code and are safe to commit as they are public identifiers for your Firebase project.
+**Note**: 
+- **Uma única chave API**: `FIREBASE_API_KEY` é usada para todas as operações Firebase
+- **Login normal**: Usuários fazem login com suas credenciais no admin panel
+- **Sem credenciais de serviço**: Não precisa de email/senha de serviço
+- **Arquitetura simplificada**: Cliente autentica, servidor usa token do usuário para Firestore
 
 ## Security
 

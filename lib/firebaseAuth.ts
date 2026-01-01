@@ -19,10 +19,10 @@ async function initializeFirebaseAuth() {
     return; // Already initialized
   }
 
-  // Use NEXT_PUBLIC_ prefix for client-side environment variables
-  const firebaseApiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY || process.env.FIREBASE_API_KEY;
+  // Use FIREBASE_API_KEY for client-side Firebase configuration
+  const firebaseApiKey = process.env.FIREBASE_API_KEY || process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
   if (!firebaseApiKey) {
-    console.warn('Missing Firebase API key. Set NEXT_PUBLIC_FIREBASE_API_KEY or FIREBASE_API_KEY in your environment.');
+    console.warn('Missing Firebase API key. Set FIREBASE_API_KEY in your environment.');
     return;
   }
 
