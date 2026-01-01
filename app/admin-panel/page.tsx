@@ -68,7 +68,7 @@ function AdminPanelContent() {
   useEffect(() => {
     // If not authenticated, redirect to login
     if (!authLoading && !user) {
-      router.push('/admin-login');
+      router.replace('/admin-login');
     }
   }, [user, authLoading, router]);
 
@@ -148,13 +148,13 @@ function AdminPanelContent() {
 
   const handleSignOut = async () => {
     if (!auth) {
-      router.push('/admin-login');
+      router.replace('/admin-login');
       return;
     }
     try {
       const { signOut } = await import('firebase/auth');
       await signOut(auth);
-      router.push('/admin-login');
+      router.replace('/admin-login');
     } catch (err) {
       console.error('Error signing out:', err);
       setMessage({ type: 'error', text: 'Erro ao fazer logout' });
