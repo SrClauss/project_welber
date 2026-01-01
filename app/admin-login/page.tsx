@@ -53,8 +53,8 @@ function AdminLoginContent() {
     try {
       const { signInWithEmailAndPassword } = await import('firebase/auth');
       await signInWithEmailAndPassword(auth, email, password);
-      // Immediately redirect after successful login
-      router.replace('/admin-panel');
+      // Auth state will be updated by onAuthStateChanged, which triggers useEffect redirect
+      // Keep signing in state active during redirect to prevent UI flicker
     } catch (err: unknown) {
       console.error('Error signing in with email:', err);
       const errorMessage = err instanceof Error ? err.message : String(err);
