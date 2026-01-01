@@ -15,7 +15,6 @@ import {
   TextField,
   Stack,
 } from '@mui/material';
-import { auth } from '../../lib/firebaseAuth';
 import { useAuth, AuthProvider } from '../../lib/AuthContext';
 import theme from '../theme';
 
@@ -37,11 +36,6 @@ function AdminLoginContent() {
   const handleEmailSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!auth) {
-      setError('Firebase Auth não está configurado corretamente.');
-      return;
-    }
-
     if (!email || !password) {
       setError('Por favor, preencha email e senha.');
       return;
@@ -51,6 +45,16 @@ function AdminLoginContent() {
     setSigningIn(true);
     
     try {
+      // Import and wait for Firebase Auth initialization
+      const { initializeFirebaseAuth, auth } = await import('../../lib/firebaseAuth');
+      await initializeFirebaseAuth();
+      
+      if (!auth) {
+        setError('Firebase Auth não está configurado corretamente.');
+        setSigningIn(false);
+        return;
+      }
+
       const { signInWithEmailAndPassword } = await import('firebase/auth');
       await signInWithEmailAndPassword(auth, email, password);
       // Auth state will be updated by onAuthStateChanged, which triggers useEffect redirect
