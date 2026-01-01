@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import type { User } from 'firebase/auth';
-import { auth } from './firebaseAuth';
+import { auth, initializeFirebaseAuth } from './firebaseAuth';
 
 interface AuthContextType {
   user: User | null;
@@ -21,30 +21,47 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let unsubscribe: (() => void) | undefined;
+    let mounted = true;
 
-    if (!auth) {
-      setLoading(false);
-      return;
-    }
+    async function setupAuth() {
+      // Wait for Firebase Auth to initialize
+      await initializeFirebaseAuth();
 
-    // Dynamic import to avoid loading firebase/auth on server
-    import('firebase/auth')
-      .then(({ onAuthStateChanged }) => {
-        if (!auth) {
+      // Check if component is still mounted and auth is available
+      if (!mounted) return;
+
+      if (!auth) {
+        setLoading(false);
+        return;
+      }
+
+      // Dynamic import to avoid loading firebase/auth on server
+      try {
+        const { onAuthStateChanged } = await import('firebase/auth');
+        
+        if (!mounted || !auth) {
           setLoading(false);
           return;
         }
+
         unsubscribe = onAuthStateChanged(auth, (user) => {
-          setUser(user);
-          setLoading(false);
+          if (mounted) {
+            setUser(user);
+            setLoading(false);
+          }
         });
-      })
-      .catch((error) => {
+      } catch (error) {
         console.error('Error loading Firebase auth:', error);
-        setLoading(false);
-      });
+        if (mounted) {
+          setLoading(false);
+        }
+      }
+    }
+
+    void setupAuth();
 
     return () => {
+      mounted = false;
       if (unsubscribe) {
         unsubscribe();
       }
