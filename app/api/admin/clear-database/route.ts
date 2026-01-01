@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { verifyUserToken, queryFirestoreCollection, batchDeleteDocuments } from '../../../../lib/firebaseServerService';
 
 // Force dynamic rendering for this route
 export const dynamic = 'force-dynamic';
@@ -16,19 +17,9 @@ export async function POST(request: Request) {
 
     const idToken = authHeader.split('Bearer ')[1];
     
-    // Dynamic import to avoid issues during build
-    const { firestore } = await import('../../../../lib/firebaseAdmin');
-    const admin = await import('../../../../lib/firebaseAdmin').then(m => m.default);
-    
-    // Verify the ID token
-    if (!admin || !admin.auth) {
-      return NextResponse.json({ 
-        error: 'Serviço de autenticação não configurado' 
-      }, { status: 503 });
-    }
-
+    // Verify the user token
     try {
-      await admin.auth().verifyIdToken(idToken);
+      await verifyUserToken(idToken);
     } catch (error) {
       console.error('Token verification failed:', error);
       return NextResponse.json({ 
@@ -37,25 +28,25 @@ export async function POST(request: Request) {
     }
     
     // Get all documents from the viagens collection
-    const viagensSnapshot = await firestore.collection('viagens').get();
+    const docs = await queryFirestoreCollection('viagens');
 
-    if (viagensSnapshot.empty) {
+    if (docs.length === 0) {
       return NextResponse.json({ 
         message: 'Banco de dados já está vazio',
         deleted: 0 
       }, { status: 200 });
     }
 
-    // Delete all documents in a batch
-    const batch = firestore.batch();
-    let deleteCount = 0;
-
-    viagensSnapshot.docs.forEach((doc: { ref: unknown }) => {
-      batch.delete(doc.ref);
-      deleteCount++;
+    // Extract document paths
+    const paths = docs.map((doc) => {
+      const docTyped = doc as { name: string };
+      // name format: "projects/{project}/databases/{database}/documents/viagens/{docId}"
+      const parts = docTyped.name.split('/documents/');
+      return parts[1]; // "viagens/{docId}"
     });
 
-    await batch.commit();
+    // Delete all documents
+    const deleteCount = await batchDeleteDocuments(paths);
 
     return NextResponse.json({
       message: `Banco de dados limpo com sucesso! ${deleteCount} viagem(ns) deletada(s).`,

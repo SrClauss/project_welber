@@ -73,24 +73,23 @@ The admin panel provides the following functionality:
 To enable Firebase authentication and database operations, set the following environment variables:
 
 ```bash
-# Client-side Firebase configuration (required for authentication)
-# Use NEXT_PUBLIC_FIREBASE_API_KEY for client-side access, or FIREBASE_API_KEY as fallback
-NEXT_PUBLIC_FIREBASE_API_KEY=your_api_key_here
-# OR
-FIREBASE_API_KEY=your_api_key_here
+# Firebase API Key (única variável necessária para client e server)
+FIREBASE_API_KEY=your_firebase_api_key
 
-# Server-side Firebase Admin (required for Firestore database operations)
-FIREBASE_SA_BASE64=your_base64_encoded_service_account_json
+# Credenciais do serviço (para operações server-side)
+FIREBASE_SERVICE_EMAIL=admin@wf-transportes.firebaseapp.com
+FIREBASE_SERVICE_PASSWORD=your_service_password
 
-# Maximum number of passengers per trip
+# Configuração da aplicação
 MAX_LUGARES=15
 ```
 
 **Note**: 
 - Firebase configuration values (authDomain, projectId, etc.) are already configured in the code and are safe to commit as they are public identifiers for your Firebase project.
-- **Authentication** uses Firebase client SDK (client-side, runs in browser)
-- **Firestore operations** use firebase-admin (server-side, runs in API routes)
-- This architecture keeps all database logic secure on the server while maintaining a smooth client-side authentication experience.
+- **Uma única chave API**: `FIREBASE_API_KEY` é usada tanto no cliente quanto no servidor
+- **Autenticação de serviço**: O servidor usa credenciais de email/senha para obter um token de serviço
+- **Sem firebase-admin**: A aplicação usa Firebase Auth REST API e Firestore REST API para todas as operações
+- **Arquitetura simplificada**: Token único gerenciado pelo servidor para todas as operações Firestore
 
 ## Security
 

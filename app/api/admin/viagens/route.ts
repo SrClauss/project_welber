@@ -1,8 +1,59 @@
 import { NextResponse } from 'next/server';
+import { verifyUserToken, queryFirestoreCollection } from '../../../../lib/firebaseServerService';
 
 // Force dynamic rendering for this route
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
+
+// Helper to convert Firestore document to plain object
+interface FirestoreValue {
+  stringValue?: string;
+  integerValue?: string;
+  booleanValue?: boolean;
+  arrayValue?: { values: unknown[] };
+  mapValue?: { fields: Record<string, FirestoreValue> };
+}
+
+function firestoreDocToObject(doc: { name: string; fields: Record<string, FirestoreValue> }): Record<string, unknown> {
+  const id = doc.name.split('/').pop() || '';
+  const data: Record<string, unknown> = { id };
+
+  for (const [key, value] of Object.entries(doc.fields)) {
+    if (value.stringValue !== undefined) {
+      data[key] = value.stringValue;
+    } else if (value.integerValue !== undefined) {
+      data[key] = parseInt(value.integerValue);
+    } else if (value.arrayValue) {
+      data[key] = value.arrayValue.values?.map((v) => {
+        const vTyped = v as { mapValue?: { fields: Record<string, FirestoreValue> } };
+        if (vTyped.mapValue) {
+          return firestoreMapToObject(vTyped.mapValue.fields);
+        }
+        return v;
+      }) || [];
+    } else if (value.mapValue) {
+      data[key] = firestoreMapToObject(value.mapValue.fields);
+    }
+  }
+
+  return data;
+}
+
+function firestoreMapToObject(fields: Record<string, FirestoreValue>): Record<string, unknown> {
+  const obj: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(fields)) {
+    if (value.stringValue !== undefined) {
+      obj[key] = value.stringValue;
+    } else if (value.integerValue !== undefined) {
+      obj[key] = parseInt(value.integerValue);
+    } else if (value.booleanValue !== undefined) {
+      obj[key] = value.booleanValue;
+    } else if (value.mapValue) {
+      obj[key] = firestoreMapToObject(value.mapValue.fields);
+    }
+  }
+  return obj;
+}
 
 export async function GET(request: Request) {
   try {
@@ -16,19 +67,9 @@ export async function GET(request: Request) {
 
     const idToken = authHeader.split('Bearer ')[1];
     
-    // Dynamic import to avoid issues during build
-    const { firestore } = await import('../../../../lib/firebaseAdmin');
-    const admin = await import('../../../../lib/firebaseAdmin').then(m => m.default);
-    
-    // Verify the ID token
-    if (!admin || !admin.auth) {
-      return NextResponse.json({ 
-        error: 'Serviço de autenticação não configurado' 
-      }, { status: 503 });
-    }
-
+    // Verify the user token
     try {
-      await admin.auth().verifyIdToken(idToken);
+      await verifyUserToken(idToken);
     } catch (error) {
       console.error('Token verification failed:', error);
       return NextResponse.json({ 
@@ -37,16 +78,8 @@ export async function GET(request: Request) {
     }
     
     // Get all documents from the viagens collection, ordered by date descending
-    const viagensSnapshot = await firestore
-      .collection('viagens')
-      .orderBy('dataViagem', 'desc')
-      .get();
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const viagens = viagensSnapshot.docs.map((doc: any) => ({
-      id: doc.id,
-      ...doc.data(),
-    }));
+    const docs = await queryFirestoreCollection('viagens', 'dataViagem');
+    const viagens = docs.map((doc: unknown) => firestoreDocToObject(doc as { name: string; fields: Record<string, FirestoreValue> }));
 
     return NextResponse.json({
       viagens,
