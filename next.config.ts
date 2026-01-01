@@ -1,26 +1,23 @@
 import type { NextConfig } from "next";
 
+// Prevent caching on admin pages to avoid 304 responses
+const noCacheHeaders = [
+  {
+    key: 'Cache-Control',
+    value: 'no-store',
+  },
+];
+
 const nextConfig: NextConfig = {
   async headers() {
     return [
       {
-        // Prevent caching on admin pages to avoid 304 responses causing issues
         source: '/admin-panel',
-        headers: [
-          {
-            key: 'Cache-Control',
-            value: 'no-store',
-          },
-        ],
+        headers: noCacheHeaders,
       },
       {
         source: '/admin-login',
-        headers: [
-          {
-            key: 'Cache-Control',
-            value: 'no-store',
-          },
-        ],
+        headers: noCacheHeaders,
       },
     ];
   },
