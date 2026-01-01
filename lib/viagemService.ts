@@ -1,17 +1,16 @@
-// firestore é requerido dinamicamente para evitar erro quando firebase-admin não estiver instalado
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let firestore: any;
-try {
-   
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  firestore = require('./firebaseAdmin').firestore;
-} catch {
-  firestore = {
-    collection() {
-      throw new Error('firebase-admin não configurado (instale/configure FIREBASE_SA_BASE64)');
-    }
-  };
-}
+import { getFirestoreInstance } from "./firestoreClient";
+import { 
+  collection, 
+  doc, 
+  getDoc, 
+  getDocs, 
+  setDoc, 
+  query, 
+  where, 
+  limit, 
+  runTransaction,
+  DocumentReference
+} from 'firebase/firestore';
 import { Viagem, Passagem, Percurso } from "../app/api/types";
 import { isValidCPF } from "../app/api/utils";
 
@@ -29,9 +28,10 @@ function parseMaxLugares(): number {
  * Encontra viagem por id
  */
 export async function findViagemById(id: string) {
-  const ref = firestore.collection("viagens").doc(id);
-  const snap = await ref.get();
-  if (!snap.exists) return null;
+  const db = await getFirestoreInstance();
+  const ref = doc(db, "viagens", id);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) return null;
   const v = Viagem.fromFirestoreDoc({ id: snap.id, data: () => snap.data() });
   return { ref, snap, viagem: v };
 }
@@ -40,25 +40,30 @@ export async function findViagemById(id: string) {
  * Busca viagem por dataViagem + percurso (retorna primeira encontrada)
  */
 export async function findViagemByDateAndPercurso(dataViagem: string, percurso: Percurso) {
-  const q = firestore.collection("viagens").where("dataViagem", "==", dataViagem).where("percurso", "==", percurso).limit(1);
-  const snap = await q.get();
+  const db = await getFirestoreInstance();
+  const q = query(
+    collection(db, "viagens"),
+    where("dataViagem", "==", dataViagem),
+    where("percurso", "==", percurso),
+    limit(1)
+  );
+  const snap = await getDocs(q);
   if (snap.empty) return null;
-  const doc = snap.docs[0];
-  const v = Viagem.fromFirestoreDoc({ id: doc.id, data: () => doc.data() });
-  return { ref: doc.ref, snap: doc, viagem: v };
+  const docSnap = snap.docs[0];
+  const v = Viagem.fromFirestoreDoc({ id: docSnap.id, data: () => docSnap.data() });
+  return { ref: docSnap.ref, snap: docSnap, viagem: v };
 }
 
 /**
  * Adiciona uma passagem numa viagem existente usando transação (verifica MAX_LUGARES)
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function addPassagemToViagemRef(ref: any, passagem: Passagem) {
+export async function addPassagemToViagemRef(ref: DocumentReference, passagem: Passagem) {
   const max = parseMaxLugares();
+  const db = await getFirestoreInstance();
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  await firestore.runTransaction(async (tx: any) => {
+  await runTransaction(db, async (tx) => {
     const snap = await tx.get(ref);
-    if (!snap.exists) {
+    if (!snap.exists()) {
       throw new Error("Viagem não encontrada na transação");
     }
     const data = snap.data() || {};
@@ -87,13 +92,14 @@ export async function createViagemWithPassagem(dataViagem: string, percurso: Per
   }
   if (1 > max) throw new Error(`Limite de lugares (${max}) não permite incluir passagem`);
 
-  const ref = firestore.collection("viagens").doc();
+  const db = await getFirestoreInstance();
+  const ref = doc(collection(db, "viagens"));
   const viagem = {
     dataViagem,
     percurso,
     passagens: [passagem],
   };
-  await ref.set(viagem);
+  await setDoc(ref, viagem);
   return ref.id;
 }
 
@@ -113,11 +119,11 @@ export async function upsertPassagem(options: { viagemId?: string; dataViagem?: 
     const found = await findViagemById(viagemId);
     if (!found) {
       // cria nova viagem usando id especificado
-      const ref = firestore.collection("viagens").doc(viagemId);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await firestore.runTransaction(async (tx: any) => {
+      const db = await getFirestoreInstance();
+      const ref = doc(db, "viagens", viagemId);
+      await runTransaction(db, async (tx) => {
         const snap = await tx.get(ref);
-        if (snap.exists) {
+        if (snap.exists()) {
           // add to existing
           const data = snap.data() || {};
           const passagens: Passagem[] = Array.isArray(data.passagens) ? data.passagens : [];
