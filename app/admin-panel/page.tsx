@@ -64,27 +64,40 @@ function AdminPanelContent() {
         return;
       }
 
-      const { getIdToken } = await import('firebase/auth');
-      const idToken = await getIdToken(user);
+      // Perform the database clear operation directly on the client side
+      // This is secure because Firestore security rules enforce access control
+      const { getFirestoreInstance } = await import('../../lib/firestoreClient');
+      const { collection, getDocs, writeBatch } = await import('firebase/firestore');
+      
+      const db = await getFirestoreInstance();
+      const viagensCollection = collection(db, 'viagens');
+      const viagensSnapshot = await getDocs(viagensCollection);
 
-      const response = await fetch('/api/admin/clear-database', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${idToken}`,
-        },
+      if (viagensSnapshot.empty) {
+        setMessage({ type: 'success', text: 'Banco de dados já está vazio' });
+        setClearing(false);
+        return;
+      }
+
+      // Delete all documents in a batch
+      const batch = writeBatch(db);
+      let deleteCount = 0;
+
+      viagensSnapshot.docs.forEach((docSnap) => {
+        batch.delete(docSnap.ref);
+        deleteCount++;
       });
 
-      const data = await response.json();
+      await batch.commit();
 
-      if (response.ok) {
-        setMessage({ type: 'success', text: data.message || 'Banco de dados limpo com sucesso!' });
-      } else {
-        setMessage({ type: 'error', text: data.error || 'Erro ao limpar banco de dados' });
-      }
+      setMessage({ 
+        type: 'success', 
+        text: `Banco de dados limpo com sucesso! ${deleteCount} viagem(ns) deletada(s).` 
+      });
     } catch (err) {
       console.error('Error clearing database:', err);
-      setMessage({ type: 'error', text: 'Erro ao conectar com o servidor' });
+      const errorMessage = err instanceof Error ? err.message : 'Erro ao limpar banco de dados';
+      setMessage({ type: 'error', text: errorMessage });
     } finally {
       setClearing(false);
     }
