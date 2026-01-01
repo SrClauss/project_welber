@@ -4,7 +4,7 @@ import { NextResponse } from 'next/server';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-export async function POST(request: Request) {
+export async function GET(request: Request) {
   try {
     // Authentication check: verify Firebase ID token from Authorization header
     const authHeader = request.headers.get('Authorization');
@@ -36,36 +36,27 @@ export async function POST(request: Request) {
       }, { status: 401 });
     }
     
-    // Get all documents from the viagens collection
-    const viagensSnapshot = await firestore.collection('viagens').get();
+    // Get all documents from the viagens collection, ordered by date descending
+    const viagensSnapshot = await firestore
+      .collection('viagens')
+      .orderBy('dataViagem', 'desc')
+      .get();
 
-    if (viagensSnapshot.empty) {
-      return NextResponse.json({ 
-        message: 'Banco de dados já está vazio',
-        deleted: 0 
-      }, { status: 200 });
-    }
-
-    // Delete all documents in a batch
-    const batch = firestore.batch();
-    let deleteCount = 0;
-
-    viagensSnapshot.docs.forEach((doc: { ref: unknown }) => {
-      batch.delete(doc.ref);
-      deleteCount++;
-    });
-
-    await batch.commit();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const viagens = viagensSnapshot.docs.map((doc: any) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
 
     return NextResponse.json({
-      message: `Banco de dados limpo com sucesso! ${deleteCount} viagem(ns) deletada(s).`,
-      deleted: deleteCount,
+      viagens,
+      total: viagens.length,
     }, { status: 200 });
   } catch (err: unknown) {
-    console.error('Error clearing database:', err);
+    console.error('Error fetching viagens:', err);
     const message = err instanceof Error ? err.message : String(err);
     return NextResponse.json({ 
-      error: `Erro ao limpar banco de dados: ${message}` 
+      error: `Erro ao buscar viagens: ${message}` 
     }, { status: 500 });
   }
 }
