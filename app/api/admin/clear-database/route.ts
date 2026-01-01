@@ -27,8 +27,8 @@ export async function POST(request: Request) {
       }, { status: 401 });
     }
     
-    // Get all documents from the viagens collection
-    const docs = await queryFirestoreCollection('viagens');
+    // Get all documents from the viagens collection using user's token
+    const docs = await queryFirestoreCollection('viagens', idToken);
 
     if (docs.length === 0) {
       return NextResponse.json({ 
@@ -45,8 +45,8 @@ export async function POST(request: Request) {
       return parts[1]; // "viagens/{docId}"
     });
 
-    // Delete all documents
-    const deleteCount = await batchDeleteDocuments(paths);
+    // Delete all documents using user's token
+    const deleteCount = await batchDeleteDocuments(paths, idToken);
 
     return NextResponse.json({
       message: `Banco de dados limpo com sucesso! ${deleteCount} viagem(ns) deletada(s).`,

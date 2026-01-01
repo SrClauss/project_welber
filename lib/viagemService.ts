@@ -1,11 +1,33 @@
-// Server-side viagem service using Firebase REST API
+// Server-side viagem service using Firebase client SDK
 import { Viagem, Passagem, Percurso } from "../app/api/types";
 import { isValidCPF } from "../app/api/utils";
-import { getFirestoreDocument, queryFirestoreCollection, authenticateService } from "./firebaseServerService";
 
 export type UpsertResult = { action: "created" | "updated"; viagemId: string };
 
-const FIREBASE_PROJECT_ID = 'wf-transportes';
+// Initialize Firebase client SDK for server-side use
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let firestore: any = null;
+
+async function getFirestore() {
+  if (firestore) return firestore;
+  
+  const { initializeApp, getApps } = await import('firebase/app');
+  const { getFirestore: getFirestoreInstance } = await import('firebase/firestore');
+  
+  const firebaseConfig = {
+    apiKey: process.env.FIREBASE_API_KEY || process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+    authDomain: "wf-transportes.firebaseapp.com",
+    projectId: "wf-transportes",
+    storageBucket: "wf-transportes.firebasestorage.app",
+    messagingSenderId: "332399091530",
+    appId: "1:332399091530:web:ccb5da2a8c6833d02502d7"
+  };
+
+  const apps = getApps();
+  const app = apps.length > 0 ? apps[0] : initializeApp(firebaseConfig);
+  firestore = getFirestoreInstance(app);
+  return firestore;
+}
 
 function parseMaxLugares(): number {
   const max = Number(process.env.MAX_LUGARES);
@@ -15,35 +37,19 @@ function parseMaxLugares(): number {
   return max;
 }
 
-// Helper to convert Firestore document format
-function convertFirestoreDoc(doc: { name: string; fields: Record<string, unknown> }): { id: string; data: Record<string, unknown> } {
-  const id = doc.name.split('/').pop() || '';
-  const data: Record<string, unknown> = {};
-  
-  // This is a simplified converter - in production you'd need a more robust one
-  for (const [key, value] of Object.entries(doc.fields)) {
-    const val = value as { stringValue?: string; integerValue?: string; arrayValue?: unknown };
-    if (val.stringValue !== undefined) {
-      data[key] = val.stringValue;
-    } else if (val.integerValue !== undefined) {
-      data[key] = parseInt(val.integerValue);
-    } else if (val.arrayValue) {
-      data[key] = val.arrayValue;
-    }
-  }
-  
-  return { id, data };
-}
-
 /**
  * Encontra viagem por id
  */
 export async function findViagemById(id: string) {
+  const db = await getFirestore();
+  const { doc, getDoc } = await import('firebase/firestore');
+  
   try {
-    const doc = await getFirestoreDocument(`viagens/${id}`) as { name: string; fields: Record<string, unknown> };
-    const { data } = convertFirestoreDoc(doc);
-    const v = Viagem.fromFirestoreDoc({ id, data: () => data });
-    return { viagem: v, docPath: `viagens/${id}` };
+    const ref = doc(db, "viagens", id);
+    const snap = await getDoc(ref);
+    if (!snap.exists()) return null;
+    const v = Viagem.fromFirestoreDoc({ id: snap.id, data: () => snap.data() });
+    return { ref, snap, viagem: v };
   } catch {
     return null;
   }
@@ -53,21 +59,42 @@ export async function findViagemById(id: string) {
  * Busca viagem por dataViagem + percurso (retorna primeira encontrada)
  */
 export async function findViagemByDateAndPercurso(dataViagem: string, percurso: Percurso) {
-  const docs = await queryFirestoreCollection('viagens');
+  const db = await getFirestore();
+  const { collection, query, where, limit, getDocs } = await import('firebase/firestore');
   
-  for (const doc of docs) {
-    const docData = doc as { name: string; fields: Record<string, { stringValue?: string }> };
-    const dataViagemField = docData.fields.dataViagem?.stringValue;
-    const percursoField = docData.fields.percurso?.stringValue;
-    
-    if (dataViagemField === dataViagem && percursoField === percurso) {
-      const { id, data } = convertFirestoreDoc(docData);
-      const v = Viagem.fromFirestoreDoc({ id, data: () => data });
-      return { viagem: v, docPath: `viagens/${id}` };
+  const q = query(
+    collection(db, "viagens"),
+    where("dataViagem", "==", dataViagem),
+    where("percurso", "==", percurso),
+    limit(1)
+  );
+  const snap = await getDocs(q);
+  if (snap.empty) return null;
+  const docSnap = snap.docs[0];
+  const v = Viagem.fromFirestoreDoc({ id: docSnap.id, data: () => docSnap.data() });
+  return { ref: docSnap.ref, snap: docSnap, viagem: v };
+}
+
+/**
+ * Adiciona uma passagem numa viagem existente usando transação (verifica MAX_LUGARES)
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function addPassagemToViagemRef(ref: any, passagem: Passagem) {
+  const max = parseMaxLugares();
+  const db = await getFirestore();
+  const { runTransaction } = await import('firebase/firestore');
+
+  await runTransaction(db, async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists()) throw new Error("Viagem não encontrada");
+    const v = Viagem.fromFirestoreDoc({ id: snap.id, data: () => snap.data() as Record<string, unknown> });
+    if ((v.passagens?.length || 0) >= max) {
+      throw new Error(`Não é possível adicionar passagem. Limite de ${max} lugares atingido.`);
     }
-  }
-  
-  return null;
+    const newPassagens = [...(v.passagens || []), passagem];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    tx.update(ref, { passagens: newPassagens as any });
+  });
 }
 
 /**
@@ -83,55 +110,17 @@ export async function createViagemWithPassagem(dataViagem: string, percurso: Per
   
   if (1 > max) throw new Error(`Limite de lugares (${max}) não permite incluir passagem`);
 
-  const token = await authenticateService();
+  const db = await getFirestore();
+  const { collection, addDoc } = await import('firebase/firestore');
   
-  // Create document with auto-generated ID
   const viagem = {
-    fields: {
-      dataViagem: { stringValue: dataViagem },
-      percurso: { stringValue: percurso },
-      passagens: {
-        arrayValue: {
-          values: [{
-            mapValue: {
-              fields: {
-                cliente: {
-                  mapValue: {
-                    fields: {
-                      name: { stringValue: passagem.cliente.name },
-                      cpfCnpj: { stringValue: passagem.cliente.cpfCnpj },
-                      email: { stringValue: passagem.cliente.email || '' },
-                    }
-                  }
-                },
-                paga: { booleanValue: passagem.paga || false },
-              }
-            }
-          }]
-        }
-      }
-    }
+    dataViagem,
+    percurso,
+    passagens: [passagem],
   };
 
-  const response = await fetch(
-    `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/viagens`,
-    {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(viagem),
-    }
-  );
-
-  if (!response.ok) {
-    throw new Error(`Erro ao criar viagem: ${response.statusText}`);
-  }
-
-  const created = await response.json();
-  const id = created.name.split('/').pop();
-  return id;
+  const docRef = await addDoc(collection(db, "viagens"), viagem);
+  return docRef.id;
 }
 
 /**
@@ -148,8 +137,7 @@ export async function upsertPassagem(options: { viagemId?: string; dataViagem?: 
   if (viagemId) {
     const found = await findViagemById(viagemId);
     if (found) {
-      // For now, just return that it was updated
-      // In a full implementation, you'd need to update the document with the new passagem
+      await addPassagemToViagemRef(found.ref, passagem);
       return { action: "updated", viagemId };
     }
     // If not found, create new
@@ -162,7 +150,7 @@ export async function upsertPassagem(options: { viagemId?: string; dataViagem?: 
   if (!dataViagem || !percurso) throw new Error("dataViagem e percurso são obrigatórios quando viagemId não é informado");
   const foundBy = await findViagemByDateAndPercurso(dataViagem, percurso);
   if (foundBy) {
-    // Update existing
+    await addPassagemToViagemRef(foundBy.ref, passagem);
     return { action: "updated", viagemId: foundBy.viagem.id || '' };
   }
 

@@ -73,23 +73,22 @@ The admin panel provides the following functionality:
 To enable Firebase authentication and database operations, set the following environment variables:
 
 ```bash
-# Firebase API Key (única variável necessária para client e server)
+# Firebase API Key (única variável Firebase necessária)
 FIREBASE_API_KEY=your_firebase_api_key
-
-# Credenciais do serviço (para operações server-side)
-FIREBASE_SERVICE_EMAIL=admin@wf-transportes.firebaseapp.com
-FIREBASE_SERVICE_PASSWORD=your_service_password
 
 # Configuração da aplicação
 MAX_LUGARES=15
+
+# Mercado Pago (para pagamentos)
+NEXT_PUBLIC_MP_PUBLIC_KEY=your_mercado_pago_public_key
+MP_ACCESS_TOKEN=your_mercado_pago_access_token
 ```
 
 **Note**: 
-- Firebase configuration values (authDomain, projectId, etc.) are already configured in the code and are safe to commit as they are public identifiers for your Firebase project.
-- **Uma única chave API**: `FIREBASE_API_KEY` é usada tanto no cliente quanto no servidor
-- **Autenticação de serviço**: O servidor usa credenciais de email/senha para obter um token de serviço
-- **Sem firebase-admin**: A aplicação usa Firebase Auth REST API e Firestore REST API para todas as operações
-- **Arquitetura simplificada**: Token único gerenciado pelo servidor para todas as operações Firestore
+- **Uma única chave API**: `FIREBASE_API_KEY` é usada para todas as operações Firebase
+- **Login normal**: Usuários fazem login com suas credenciais no admin panel
+- **Sem credenciais de serviço**: Não precisa de email/senha de serviço
+- **Arquitetura simplificada**: Cliente autentica, servidor usa token do usuário para Firestore
 
 ## Security
 

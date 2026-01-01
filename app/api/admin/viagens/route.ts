@@ -78,7 +78,8 @@ export async function GET(request: Request) {
     }
     
     // Get all documents from the viagens collection, ordered by date descending
-    const docs = await queryFirestoreCollection('viagens', 'dataViagem');
+    // Use the user's token for Firestore access
+    const docs = await queryFirestoreCollection('viagens', idToken, 'dataViagem');
     const viagens = docs.map((doc: unknown) => firestoreDocToObject(doc as { name: string; fields: Record<string, FirestoreValue> }));
 
     return NextResponse.json({
