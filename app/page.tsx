@@ -22,6 +22,12 @@ import {
   DialogContent,
   DialogContentText,
   DialogActions,
+  RadioGroup,
+  FormControlLabel,
+  Radio,
+  FormControl,
+  FormLabel,
+  InputAdornment,
 } from '@mui/material';
 import {
   Wifi,
@@ -65,6 +71,11 @@ function getDisponibilidade() {
   return dias;
 }
 
+type PassagemBody = {
+  viagem: { dataViagem: string; percurso: string };
+  passagem: { cliente: { name: string; cpfCnpj: string; email?: string }; paga: boolean; externalReference?: string };
+};
+
 export default function Home() {
   const [reserva, setReserva] = useState({ origem: '', dataIso: '', dataLabel: '', passageiros: 1 });
   // cliente agora fica no modal (modalCliente) — página não exibe nome/email/CPF
@@ -76,6 +87,10 @@ export default function Home() {
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [modalCliente, setModalCliente] = useState({ name: '', cpfCnpj: '', email: '' });
 
+  // payment UI state
+  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'mercadopago'>('mercadopago');
+  const [valorUnitario, setValorUnitario] = useState<number>(50);
+
   const datasDisponiveis = getDisponibilidade();
 
   const canSubmit = () => {
@@ -83,39 +98,18 @@ export default function Home() {
     return Boolean(reserva.origem && reserva.dataIso && reserva.passageiros > 0 && !loading);
   };
 
-  // submit reservations given a client object (name, cpfCnpj, email)
-  async function submitReservations(client: { name: string; cpfCnpj: string; email?: string }) {
-    if (!client?.name || !client?.cpfCnpj) {
-      setSnack({ open: true, severity: 'error', message: 'Nome e CPF/CNPJ são obrigatórios.' });
-      return;
-    }
 
-    setCheckoutOpen(false);
+
+  // Helper: send multiple passagem bodies (each body must contain { viagem, passagem })
+  async function sendPassagensBodies(bodies: PassagemBody[]) {
     setLoading(true);
     const results: { ok: boolean; detail?: string }[] = [];
-
-    for (let i = 0; i < reserva.passageiros; i++) {
-      const externalReference = `resv_${Date.now()}_${i}`;
-      const passagem = {
-        cliente: {
-          name: reserva.passageiros > 1 ? `${client.name} (${i + 1}/${reserva.passageiros})` : client.name,
-          cpfCnpj: client.cpfCnpj,
-          email: client.email,
-        },
-        paga: false,
-        externalReference,
-      };
-
-      const body = {
-        viagem: { dataViagem: reserva.dataIso, percurso: reserva.origem === 'sjp-the' ? 'São João dos Patos - Teresina' : 'Teresina - São João dos Patos' },
-        passagem,
-      };
-
+    for (let i = 0; i < bodies.length; i++) {
       try {
         const res = await fetch('/api/viagens/passagens', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
+          body: JSON.stringify(bodies[i]),
         });
         const json = await res.json();
         if (!res.ok) {
@@ -127,17 +121,120 @@ export default function Home() {
         results.push({ ok: false, detail: String(e) });
       }
     }
-
     setLoading(false);
+    return results;
+  }
+
+  // Cash payment: mark passagens as paid (paga=true)
+  async function handleConfirmCash() {
+    if (!modalCliente?.name || !modalCliente?.cpfCnpj) {
+      setSnack({ open: true, severity: 'error', message: 'Nome e CPF/CNPJ são obrigatórios.' });
+      return;
+    }
+
+    const bodies: PassagemBody[] = [];
+    for (let i = 0; i < reserva.passageiros; i++) {
+      const externalReference = `resv_${Date.now()}_${i}`;
+      const passagem = {
+        cliente: {
+          name: reserva.passageiros > 1 ? `${modalCliente.name} (${i + 1}/${reserva.passageiros})` : modalCliente.name,
+          cpfCnpj: modalCliente.cpfCnpj,
+          email: modalCliente.email,
+        },
+        paga: true,
+        externalReference,
+      };
+      bodies.push({ viagem: { dataViagem: reserva.dataIso, percurso: reserva.origem === 'sjp-the' ? 'São João dos Patos - Teresina' : 'Teresina - São João dos Patos' }, passagem });
+    }
+
+    const results = await sendPassagensBodies(bodies);
     const failed = results.filter((r) => !r.ok);
     if (failed.length === 0) {
-      setSnack({ open: true, severity: 'success', message: `Reserva(s) criada(s): ${reserva.passageiros}` });
+      setSnack({ open: true, severity: 'success', message: `Reserva(s) criada(s) e pagas em dinheiro: ${reserva.passageiros}` });
+      setCheckoutOpen(false);
       setReserva({ origem: '', dataIso: '', dataLabel: '', passageiros: 1 });
+      setModalCliente({ name: '', cpfCnpj: '', email: '' });
     } else {
       setSnack({ open: true, severity: 'error', message: `Falha em ${failed.length} reserva(s): ${failed.map(f => f.detail).join('; ')}` });
     }
+  }
 
+  // Mercado Pago flow: create passagens with a shared externalReference then create preference and redirect
+  async function handleConfirmMercado() {
+    if (!modalCliente?.name || !modalCliente?.cpfCnpj) {
+      setSnack({ open: true, severity: 'error', message: 'Nome e CPF/CNPJ são obrigatórios.' });
+      return;
+    }
 
+    const checkoutRef = `checkout_${Date.now()}`;
+    const bodies: PassagemBody[] = [];
+    for (let i = 0; i < reserva.passageiros; i++) {
+      const passagem = {
+        cliente: {
+          name: reserva.passageiros > 1 ? `${modalCliente.name} (${i + 1}/${reserva.passageiros})` : modalCliente.name,
+          cpfCnpj: modalCliente.cpfCnpj,
+          email: modalCliente.email,
+        },
+        paga: false,
+        externalReference: checkoutRef,
+      };
+      bodies.push({ viagem: { dataViagem: reserva.dataIso, percurso: reserva.origem === 'sjp-the' ? 'São João dos Patos - Teresina' : 'Teresina - São João dos Patos' }, passagem });
+    }
+
+    // create passagens first (reserve seats)
+    const results = await sendPassagensBodies(bodies);
+    const failed = results.filter((r) => !r.ok);
+    if (failed.length > 0) {
+      setSnack({ open: true, severity: 'error', message: `Falha ao criar reserva(s): ${failed.map(f => f.detail).join('; ')}` });
+      return;
+    }
+
+    // create Mercado Pago preference
+    try {
+      setLoading(true);
+      const prefBody = {
+        items: [
+          {
+            title: `Passagem WF - ${reserva.origem === 'sjp-the' ? 'SJP → Teresina' : 'Teresina → SJP'}`,
+            quantity: reserva.passageiros,
+            unit_price: Number(valorUnitario) || 0,
+            currency_id: 'BRL',
+          },
+        ],
+        payer: {
+          name: modalCliente.name,
+          email: modalCliente.email,
+          cpfCnpj: modalCliente.cpfCnpj,
+        },
+        external_reference: checkoutRef,
+      };
+
+      const res = await fetch('/api/mercadopago/create-checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(prefBody),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        setSnack({ open: true, severity: 'error', message: json?.error ?? JSON.stringify(json) });
+        setLoading(false);
+        return;
+      }
+
+      const pref = json.preference ?? json.preference;
+      // prefer sandbox_init_point when available in dev
+      const link = (pref && (pref.sandbox_init_point || pref.init_point || pref.sandbox_init_point || pref['init_point'])) || null;
+      if (link) {
+        // redirect to Mercado Pago checkout
+        window.location.href = link as string;
+      } else {
+        setSnack({ open: true, severity: 'error', message: 'Checkout criado, mas nenhum link retornado pelo Mercado Pago.' });
+      }
+    } catch (e) {
+      setSnack({ open: true, severity: 'error', message: String(e) });
+    } finally {
+      setLoading(false);
+    }
   }
 
 
@@ -327,11 +424,30 @@ export default function Home() {
               <TextField label="Nome completo" required value={modalCliente.name} onChange={(e) => setModalCliente({ ...modalCliente, name: e.target.value })} fullWidth />
               <TextField label="CPF/CNPJ" required value={modalCliente.cpfCnpj} onChange={(e) => setModalCliente({ ...modalCliente, cpfCnpj: e.target.value })} fullWidth />
               <TextField label="Email (opcional)" value={modalCliente.email} onChange={(e) => setModalCliente({ ...modalCliente, email: e.target.value })} fullWidth />
+
+              <FormControl component="fieldset">
+                <FormLabel component="legend">Forma de pagamento</FormLabel>
+                <RadioGroup value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value as 'cash' | 'mercadopago')}>
+                  <FormControlLabel value="cash" control={<Radio />} label="Dinheiro (pagamento no embarque)" />
+                  <FormControlLabel value="mercadopago" control={<Radio />} label="Mercado Pago (checkout online)" />
+                </RadioGroup>
+              </FormControl>
+
+              {paymentMethod === 'mercadopago' && (
+                <TextField
+                  label="Valor por passageiro (R$)"
+                  type="number"
+                  value={valorUnitario}
+                  onChange={(e) => setValorUnitario(Number(e.target.value))}
+                  InputProps={{ startAdornment: <InputAdornment position="start">R$</InputAdornment> }}
+                />
+              )}
+
             </Stack>
           </DialogContent>
           <DialogActions>
             <Button onClick={() => setCheckoutOpen(false)}>Cancelar</Button>
-            <Button onClick={() => submitReservations(modalCliente)} variant="contained" sx={{ bgcolor: '#D4AF37', color: '#fff' }}>
+            <Button onClick={() => paymentMethod === 'cash' ? handleConfirmCash() : handleConfirmMercado()} variant="contained" sx={{ bgcolor: '#D4AF37', color: '#fff' }}>
               Confirmar e Pagar
             </Button>
           </DialogActions>
