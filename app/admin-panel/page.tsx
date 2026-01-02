@@ -73,9 +73,29 @@ function AdminPanelContent() {
   }, [user, authLoading, router]);
 
   useEffect(() => {
-    // Load viagens data
+    // Load viagens data and current price
     if (user) {
       loadViagens();
+      (async () => {
+        try {
+          const { getIdToken } = await import('firebase/auth');
+          const idToken = await getIdToken(user);
+          const res = await fetch('/api/admin/valor-passagem', { headers: { 'Authorization': `Bearer ${idToken}` } });
+          const json = await res.json();
+          if (res.ok && json.valor_passagem !== null && json.valor_passagem !== undefined) {
+            const el = document.getElementById('admin-valor-passagem');
+            if (el) el.textContent = Number(json.valor_passagem).toFixed(2);
+            (window as any).__admin_valor_passagem = Number(json.valor_passagem);
+          } else {
+            const fallback = Number(process.env.NEXT_PUBLIC_VALOR_PASSAGEM ?? 50);
+            const el = document.getElementById('admin-valor-passagem');
+            if (el) el.textContent = Number(fallback).toFixed(2);
+            (window as any).__admin_valor_passagem = fallback;
+          }
+        } catch (err) {
+          console.error('Failed loading price', err);
+        }
+      })();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
@@ -268,20 +288,30 @@ function AdminPanelContent() {
               >
                 Painel Administrativo
               </Typography>
-              <Button
-                variant="outlined"
-                onClick={handleSignOut}
-                sx={{
-                  borderColor: '#D4AF37',
-                  color: '#D4AF37',
-                  '&:hover': {
-                    borderColor: '#b8962d',
-                    bgcolor: 'rgba(212, 175, 55, 0.1)',
-                  },
-                }}
-              >
-                Sair
-              </Button>
+
+              <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+                <Box>
+                  <Typography variant="caption" sx={{ display: 'block', color: '#666' }}>Valor atual por passageiro</Typography>
+                  <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                    R$ <span id="admin-valor-passagem">—</span>
+                  </Typography>
+                </Box>
+
+                <Button
+                  variant="outlined"
+                  onClick={handleSignOut}
+                  sx={{
+                    borderColor: '#D4AF37',
+                    color: '#D4AF37',
+                    '&:hover': {
+                      borderColor: '#b8962d',
+                      bgcolor: 'rgba(212, 175, 55, 0.1)',
+                    },
+                  }}
+                >
+                  Sair
+                </Button>
+              </Box>
             </Box>
 
             <Box sx={{ mb: 2 }}>
@@ -291,6 +321,42 @@ function AdminPanelContent() {
               <Typography variant="caption" sx={{ color: '#999' }}>
                 {user.email}
               </Typography>
+
+              <Box sx={{ mt: 2, display: 'flex', gap: 2, alignItems: 'center' }}>
+                <TextField
+                  label="Valor por passageiro (R$)"
+                  type="number"
+                  size="small"
+                  value={(window as any).__admin_valor_passagem ?? ''}
+                  onChange={(e) => (window as any).__admin_valor_passagem = e.target.value}
+                  sx={{ width: 200 }}
+                />
+                <Button variant="contained" onClick={async () => {
+                  try {
+                    setLoading(true);
+                    const { getIdToken } = await import('firebase/auth');
+                    const idToken = await getIdToken(user);
+                    const valor = Number((window as any).__admin_valor_passagem);
+                    const res = await fetch('/api/admin/valor-passagem', {
+                      method: 'PUT',
+                      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
+                      body: JSON.stringify({ valor_passagem: valor })
+                    });
+                    const json = await res.json();
+                    if (!res.ok) throw new Error(json?.error || 'Erro ao atualizar');
+                    setMessage({ type: 'success', text: `Valor atualizado para R$ ${json.valor_passagem}` });
+                    // update displayed value
+                    const el = document.getElementById('admin-valor-passagem');
+                    if (el) el.textContent = json.valor_passagem.toFixed(2);
+                  } catch (err) {
+                    setMessage({ type: 'error', text: err instanceof Error ? err.message : String(err) });
+                  } finally {
+                    setLoading(false);
+                  }
+                }}>
+                  Salvar
+                </Button>
+              </Box>
             </Box>
           </Paper>
 

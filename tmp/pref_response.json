@@ -1,0 +1,110 @@
+{
+  "ok": true,
+  "preference": {
+    "additional_info": "",
+    "auto_return": "",
+    "back_urls": {
+      "failure": "localhost:3000/pagamento-falhou",
+      "pending": "localhost:3000/pagamento-pendente",
+      "success": "localhost:3000/confirmacao"
+    },
+    "binary_mode": false,
+    "client_id": "5632373383817986",
+    "collector_id": 3102974595,
+    "coupon_code": null,
+    "coupon_labels": null,
+    "date_created": "2026-01-02T13:36:45.475-04:00",
+    "date_of_expiration": null,
+    "expiration_date_from": null,
+    "expiration_date_to": null,
+    "expires": false,
+    "external_reference": "headless_1767375404815",
+    "id": "3102974595-166644cc-459a-4dce-905a-65a3a61e8acf",
+    "init_point": "https://www.mercadopago.com.br/checkout/v1/redirect?pref_id=3102974595-166644cc-459a-4dce-905a-65a3a61e8acf",
+    "internal_metadata": null,
+    "items": [
+      {
+        "id": "",
+        "category_id": "",
+        "currency_id": "BRL",
+        "description": "",
+        "title": "Test Sandbox Checkout Headless",
+        "quantity": 1,
+        "unit_price": 7.5
+      }
+    ],
+    "marketplace": "NONE",
+    "marketplace_fee": 0,
+    "metadata": {},
+    "notification_url": null,
+    "operation_type": "regular_payment",
+    "payer": {
+      "phone": {
+        "area_code": "",
+        "number": ""
+      },
+      "address": {
+        "zip_code": "",
+        "street_name": "",
+        "street_number": null
+      },
+      "email": "",
+      "identification": {
+        "number": "",
+        "type": ""
+      },
+      "name": "",
+      "surname": "",
+      "date_created": null,
+      "last_purchase": null
+    },
+    "payment_methods": {
+      "default_card_id": null,
+      "default_payment_method_id": null,
+      "excluded_payment_methods": [
+        {
+          "id": ""
+        }
+      ],
+      "excluded_payment_types": [
+        {
+          "id": "ticket"
+        },
+        {
+          "id": "atm"
+        }
+      ],
+      "installments": 1,
+      "default_installments": null
+    },
+    "processing_modes": null,
+    "product_id": null,
+    "preference_expired": false,
+    "redirect_urls": {
+      "failure": "",
+      "pending": "",
+      "success": ""
+    },
+    "sandbox_init_point": "https://sandbox.mercadopago.com.br/checkout/v1/redirect?pref_id=3102974595-166644cc-459a-4dce-905a-65a3a61e8acf",
+    "site_id": "MLB",
+    "shipments": {
+      "default_shipping_method": null,
+      "receiver_address": {
+        "zip_code": "",
+        "street_name": "",
+        "street_number": null,
+        "floor": "",
+        "apartment": "",
+        "city_name": null,
+        "state_name": null,
+        "country_name": null,
+        "neighborhood": null
+      }
+    },
+    "total_amount": null,
+    "last_updated": null,
+    "financing_group": ""
+  },
+  "sandbox": true,
+  "tokenUsed": "sandbox"
+}

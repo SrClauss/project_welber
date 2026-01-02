@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Project Welber",
-  description: "Next.js application created for Project Welber",
+  title: "WFT - Walber Filho Transportes",
+  description: "Pagina da Walber Filho Transportes",
 };
 
 export default function RootLayout({

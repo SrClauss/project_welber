@@ -40,14 +40,10 @@ import {
 } from 'lucide-react';
 import theme from './theme';
 
-const LogoWF = () => (
-  <Box sx={{ width: 160, mb: 2 }}>
-    <svg viewBox="0 0 800 300" xmlns="http://www.w3.org/2000/svg">
-      <path d="M50 250 Q100 200 250 50 L230 45 Q80 190 50 250 Z" fill="#D4AF37" />
-      <text x="310" y="130" fontWeight="bold" fontSize="100" fill="#1a1a1a">WF</text>
-      <text x="170" y="220" fontSize="35" letterSpacing="15" fill="#444">TRANSPORTES</text>
-    </svg>
-  </Box>
+const Logo = () => (
+
+    <Box component="img" src="/logo.svg" alt="WF Logo" sx={{ width: 400, mb: 1 }} />
+
 );
 
 function getDisponibilidade() {
@@ -87,9 +83,30 @@ export default function Home() {
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [modalCliente, setModalCliente] = useState({ name: '', cpfCnpj: '', email: '' });
 
+  // modal shown when server indicates the trip has reached max capacity
+  const [limitModalOpen, setLimitModalOpen] = useState(false);
+  const [limitModalMessage, setLimitModalMessage] = useState('');
+
   // payment UI state
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'mercadopago'>('mercadopago');
-  const [valorUnitario, setValorUnitario] = useState<number>(50);
+  const [valorUnitario, setValorUnitario] = useState<number>(Number(process.env.NEXT_PUBLIC_VALOR_PASSAGEM ?? 50));
+
+  React.useEffect(() => {
+    // Fetch price from server (Firestore if configured) then fallback to env
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/public/valor-passagem');
+        const json = await res.json();
+        if (!cancelled && json?.valor_passagem && Number.isFinite(Number(json.valor_passagem))) {
+          setValorUnitario(Number(json.valor_passagem));
+        }
+      } catch (err) {
+        // ignore and keep env fallback
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   const datasDisponiveis = getDisponibilidade();
 
@@ -122,6 +139,15 @@ export default function Home() {
       }
     }
     setLoading(false);
+
+    // If any result contains a server message about limit, open the modal with that message
+    const limitFailure = results.find((r) => r.detail && /limite/i.test(r.detail));
+    if (limitFailure) {
+      // Show a generic message without numbers as requested
+      setLimitModalMessage('Não há mais vagas para esta viagem.');
+      setLimitModalOpen(true);
+    }
+
     return results;
   }
 
@@ -181,7 +207,11 @@ export default function Home() {
       bodies.push({ viagem: { dataViagem: reserva.dataIso, percurso: reserva.origem === 'sjp-the' ? 'São João dos Patos - Teresina' : 'Teresina - São João dos Patos' }, passagem });
     }
 
-    // create passagens first (reserve seats)
+    // Check if in development mode - skip Mercado Pago and redirect to manual confirmation
+    const envName = String(process.env.NEXT_PUBLIC_ENVIROMENT || '').toLowerCase();
+    const isDevelopment = ['development', 'dev', 'local'].includes(envName);
+
+    // Create passagens first (reserve seats with paga: false)
     const results = await sendPassagensBodies(bodies);
     const failed = results.filter((r) => !r.ok);
     if (failed.length > 0) {
@@ -189,15 +219,31 @@ export default function Home() {
       return;
     }
 
-    // create Mercado Pago preference
+    // In development: skip Mercado Pago and redirect directly to confirmation page
+    if (isDevelopment) {
+      setCheckoutOpen(false);
+      setReserva({ origem: '', dataIso: '', dataLabel: '', passageiros: 1 });
+      setModalCliente({ name: '', cpfCnpj: '', email: '' });
+      window.location.href = `/confirmacao?external_reference=${checkoutRef}`;
+      return;
+    }
+
+    // Production: create Mercado Pago preference and redirect to checkout
     try {
       setLoading(true);
+      const unitPriceNumber = Number(valorUnitario);
+      if (!Number.isFinite(unitPriceNumber) || unitPriceNumber <= 0) {
+        setSnack({ open: true, severity: 'error', message: 'Valor unitário inválido. Defina um valor maior que zero.' });
+        setLoading(false);
+        return;
+      }
+
       const prefBody = {
         items: [
           {
             title: `Passagem WF - ${reserva.origem === 'sjp-the' ? 'SJP → Teresina' : 'Teresina → SJP'}`,
             quantity: reserva.passageiros,
-            unit_price: Number(valorUnitario) || 0,
+            unit_price: unitPriceNumber,
             currency_id: 'BRL',
           },
         ],
@@ -221,11 +267,9 @@ export default function Home() {
         return;
       }
 
-      const pref = json.preference ?? json.preference;
-      // prefer sandbox_init_point when available in dev
-      const link = (pref && (pref.sandbox_init_point || pref.init_point || pref.sandbox_init_point || pref['init_point'])) || null;
+      const link = json.checkout_link ?? json.preference?.sandbox_init_point ?? json.preference?.init_point ?? null;
+
       if (link) {
-        // redirect to Mercado Pago checkout
         window.location.href = link as string;
       } else {
         setSnack({ open: true, severity: 'error', message: 'Checkout criado, mas nenhum link retornado pelo Mercado Pago.' });
@@ -237,7 +281,7 @@ export default function Home() {
     }
   }
 
-
+  // PIX flow removed per request
 
 
 
@@ -246,10 +290,10 @@ export default function Home() {
       <CssBaseline />
       <Box sx={{ minHeight: '100vh', bgcolor: '#f0f2f5' }}>
         {/* Banner Hero */}
-        <Box sx={{ position: 'relative', pt: 4, pb: { xs: 15, md: 22 }, backgroundImage: 'linear-gradient(rgba(255,255,255,0.1), rgba(240,242,245,1)), url("/image_b0e4d2.png")', backgroundSize: 'cover', backgroundPosition: 'center 40%', backgroundAttachment: 'fixed' }}>
+        <Box sx={{ position: 'relative', pt: 4, pb: { xs: 15, md: 22 }, background: 'linear-gradient(rgba(255,255,255,0.1), rgba(240,242,245,1))' }}>
           <Container maxWidth="lg">
             <Stack direction="row" justifyContent="center" sx={{ mb: { xs: 4, md: 8 } }}>
-              <LogoWF />
+              <Logo />
             </Stack>
 
             <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, alignItems: 'center', justifyContent: 'space-between', gap: 4 }}>
@@ -434,13 +478,9 @@ export default function Home() {
               </FormControl>
 
               {paymentMethod === 'mercadopago' && (
-                <TextField
-                  label="Valor por passageiro (R$)"
-                  type="number"
-                  value={valorUnitario}
-                  onChange={(e) => setValorUnitario(Number(e.target.value))}
-                  InputProps={{ startAdornment: <InputAdornment position="start">R$</InputAdornment> }}
-                />
+                <Typography variant="body2" color="text.secondary">
+                  Valor por passageiro: <strong>R$ {valorUnitario.toFixed(2)}</strong>
+                </Typography>
               )}
 
             </Stack>
@@ -450,6 +490,18 @@ export default function Home() {
             <Button onClick={() => paymentMethod === 'cash' ? handleConfirmCash() : handleConfirmMercado()} variant="contained" sx={{ bgcolor: '#D4AF37', color: '#fff' }}>
               Confirmar e Pagar
             </Button>
+          </DialogActions>
+        </Dialog>
+
+        <Dialog open={limitModalOpen} onClose={() => setLimitModalOpen(false)}>
+          <DialogTitle>Limite de lugares atingido</DialogTitle>
+          <DialogContent>
+            <DialogContentText>
+              {limitModalMessage || 'Não é possível adicionar mais passagens para esta viagem.'}
+            </DialogContentText>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setLimitModalOpen(false)}>OK</Button>
           </DialogActions>
         </Dialog>
 

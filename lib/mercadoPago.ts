@@ -26,8 +26,8 @@ export class MercadoPagoError extends Error {
   }
 }
 
-export async function createPreference(body: PreferenceBody): Promise<PreferenceResponse> {
-  const token = process.env.MERCADO_PAGO_ACCESS_TOKEN;
+export async function createPreference(body: PreferenceBody, tokenOverride?: string): Promise<PreferenceResponse> {
+  const token = tokenOverride || process.env.MERCADO_PAGO_ACCESS_TOKEN;
   if (!token) throw new Error('MERCADO_PAGO_ACCESS_TOKEN não definido no ambiente');
 
   // simple validation
@@ -52,3 +52,4 @@ export async function createPreference(body: PreferenceBody): Promise<Preference
 
   return json as PreferenceResponse;
 }
+

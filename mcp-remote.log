@@ -1,0 +1,17 @@
+nohup: ignorando entrada
+[96833] Using callback hostname: 127.0.0.1
+[96833] Using automatically selected callback port: 7380
+[96833] Using custom headers: {"Authorization":"Bearer APP_USR-5632373383817986-123120-37aaf7c4f3044a28a4b58cf495e67ab2-3102974595"}
+[96833] Discovering OAuth server configuration...
+[96833] Discovered authorization server: https://mcp.mercadopago.com
+[96833] [96833] Connecting to remote server: https://mcp.mercadopago.com/mcp
+[96833] Using transport strategy: http-first
+[96833] Connected to remote server using StreamableHTTPClientTransport
+[96833] Local STDIO server running
+[96833] Proxy established successfully between local STDIO and remote StreamableHTTPClientTransport
+[96833] Press Ctrl+C to exit
+[96833] Error from local client: [Error: EBADF: bad file descriptor, read] {
+  errno: -9,
+  code: 'EBADF',
+  syscall: 'read'
+}

@@ -1,6 +1,7 @@
 // Server-side viagem service using Firebase client SDK
 import { Viagem, Passagem, Percurso } from "../app/api/types";
 import { isValidCPF } from "../app/api/utils";
+import type { UpdateData } from 'firebase/firestore';
 
 export type UpsertResult = { action: "created" | "updated"; viagemId: string };
 
@@ -27,6 +28,29 @@ async function getFirestore() {
   const app = apps.length > 0 ? apps[0] : initializeApp(firebaseConfig);
   firestore = getFirestoreInstance(app);
   return firestore;
+}
+
+/**
+ * Remove propriedades com valor `undefined` de objetos/arrays recursivamente.
+ * Firestore rejeita campos com valor undefined, então sanitizamos antes de gravar.
+ */
+function sanitizeForFirestore<T>(value: T): T {
+  if (value === undefined) return value;
+  if (value === null) return value;
+  if (Array.isArray(value)) {
+    return value
+      .map((v) => sanitizeForFirestore(v))
+      .filter((v) => v !== undefined) as unknown as T;
+  }
+  if (typeof value === 'object' && value !== null) {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      if (v === undefined) continue; // skip undefined
+      out[k] = sanitizeForFirestore(v as unknown as T);
+    }
+    return out as T;
+  }
+  return value;
 }
 
 function parseMaxLugares(): number {
@@ -84,17 +108,41 @@ export async function addPassagemToViagemRef(ref: any, passagem: Passagem) {
   const db = await getFirestore();
   const { runTransaction } = await import('firebase/firestore');
 
-  await runTransaction(db, async (tx) => {
-    const snap = await tx.get(ref);
-    if (!snap.exists()) throw new Error("Viagem não encontrada");
-    const v = Viagem.fromFirestoreDoc({ id: snap.id, data: () => snap.data() as Record<string, unknown> });
-    if ((v.passagens?.length || 0) >= max) {
-      throw new Error(`Não é possível adicionar passagem. Limite de ${max} lugares atingido.`);
+  try {
+    await runTransaction(db, async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists()) throw new Error("Viagem não encontrada");
+      const v = Viagem.fromFirestoreDoc({ id: snap.id, data: () => snap.data() as Record<string, unknown> });
+      if ((v.passagens?.length || 0) >= max) {
+        throw new Error(`Não é possível adicionar passagem. Limite de ${max} lugares atingido.`);
+      }
+      const newPassagens = [...(v.passagens || []), passagem];
+      // Sanitize to remove undefined values (Firestore rejects undefined)
+      const sanitized = sanitizeForFirestore(newPassagens);
+      try {
+        // Build an UpdateData payload to satisfy Firestore types
+        const payload = { passagens: sanitized as unknown as unknown[] } as UpdateData<{ passagens: unknown[] }>;
+        tx.update(ref, payload);
+      } catch (err) {
+        console.error('Failed to update passagens on transaction. Payload:', JSON.stringify(sanitized, null, 2));
+        throw err;
+      }
+    });
+  } catch (err) {
+    console.error('Transaction failed for addPassagemToViagemRef. Ref path:', ref?.path ?? String(ref));
+    // Log existing passagens from the doc to help debugging
+    try {
+      const { getDoc } = await import('firebase/firestore');
+      const docSnap = await getDoc(ref);
+      if (docSnap.exists()) {
+        const docData = docSnap.data() as Record<string, unknown> | undefined;
+        console.error('Existing passagens snapshot:', JSON.stringify((docData?.passagens) ?? null, null, 2));
+      }
+    } catch (e) {
+      console.error('Could not read document snapshot for debugging:', e);
     }
-    const newPassagens = [...(v.passagens || []), passagem];
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    tx.update(ref, { passagens: newPassagens as any });
-  });
+    throw err;
+  }
 }
 
 /**
@@ -119,7 +167,8 @@ export async function createViagemWithPassagem(dataViagem: string, percurso: Per
     passagens: [passagem],
   };
 
-  const docRef = await addDoc(collection(db, "viagens"), viagem);
+  const viagemSanitized = sanitizeForFirestore(viagem);
+  const docRef = await addDoc(collection(db, "viagens"), viagemSanitized as unknown as Record<string, unknown>);
   return docRef.id;
 }
 
@@ -157,4 +206,62 @@ export async function upsertPassagem(options: { viagemId?: string; dataViagem?: 
   // create new
   const id = await createViagemWithPassagem(dataViagem, percurso, passagem);
   return { action: "created", viagemId: id };
+}
+
+/**
+ * Encontra a primeira viagem que contenha passagens com `externalReference` igual ao valor informado.
+ */
+export async function findViagemByExternalReference(externalReference: string) {
+  const db = await getFirestore();
+  const { collection, getDocs } = await import('firebase/firestore');
+
+  const col = collection(db, 'viagens');
+  const snap = await getDocs(col);
+  for (const doc of snap.docs) {
+    const data = doc.data();
+    const passagens: Passagem[] = Array.isArray(data.passagens) ? data.passagens as Passagem[] : [];
+    if (passagens.some(p => p.externalReference === externalReference)) {
+      const v = Viagem.fromFirestoreDoc({ id: doc.id, data: () => data });
+      return { ref: doc.ref, viagem: v };
+    }
+  }
+  return null;
+}
+
+/**
+ * Marca todas as passagens com `externalReference` igual ao valor informado como pagas.
+ * Retorna o número de passagens atualizadas.
+ */
+export async function markPassagensPaidByExternalReference(externalReference: string, options?: { paymentId?: string; by?: string; }) {
+  const db = await getFirestore();
+  const { runTransaction } = await import('firebase/firestore');
+
+  let updated = 0;
+  await runTransaction(db, async (tx) => {
+    const { collection, getDocs } = await import('firebase/firestore');
+    const col = collection(db, 'viagens');
+    const snap = await getDocs(col);
+    for (const doc of snap.docs) {
+      const data = doc.data();
+      const passagens: Passagem[] = Array.isArray(data.passagens) ? data.passagens as Passagem[] : [];
+      let changed = false;
+      const newPassagens = passagens.map((p) => {
+        if (p.externalReference === externalReference && !p.paga) {
+          changed = true;
+          updated += 1;
+          const checkoutInfo = {
+            id: options?.paymentId || 'manual-confirm',
+            status: 'paid',
+            dateCreated: new Date().toISOString()
+          } as any;
+          return { ...p, paga: true, checkout: checkoutInfo } as Passagem;
+        }
+        return p;
+      });
+      if (changed) {
+        await tx.update(doc.ref, { passagens: sanitizeForFirestore(newPassagens) });
+      }
+    }
+  });
+  return updated;
 }
