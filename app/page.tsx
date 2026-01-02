@@ -90,6 +90,7 @@ export default function Home() {
   // payment UI state
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'mercadopago'>('mercadopago');
   const [valorUnitario, setValorUnitario] = useState<number>(Number(process.env.NEXT_PUBLIC_VALOR_PASSAGEM ?? 50));
+  const [roundTrip, setRoundTrip] = useState<boolean>(false);
 
   React.useEffect(() => {
     // Fetch price from server (Firestore if configured) then fallback to env
@@ -195,16 +196,22 @@ export default function Home() {
     const checkoutRef = `checkout_${Date.now()}`;
     const bodies: PassagemBody[] = [];
     for (let i = 0; i < reserva.passageiros; i++) {
-      const passagem = {
-        cliente: {
-          name: reserva.passageiros > 1 ? `${modalCliente.name} (${i + 1}/${reserva.passageiros})` : modalCliente.name,
-          cpfCnpj: modalCliente.cpfCnpj,
-          email: modalCliente.email,
-        },
-        paga: false,
-        externalReference: checkoutRef,
+      const baseCliente = {
+        name: reserva.passageiros > 1 ? `${modalCliente.name} (${i + 1}/${reserva.passageiros})` : modalCliente.name,
+        cpfCnpj: modalCliente.cpfCnpj,
+        email: modalCliente.email,
       };
-      bodies.push({ viagem: { dataViagem: reserva.dataIso, percurso: reserva.origem === 'sjp-the' ? 'São João dos Patos - Teresina' : 'Teresina - São João dos Patos' }, passagem });
+
+      if (roundTrip) {
+        // create two passagens per passenger (ida + volta) using same external reference
+        const passagemIda = { cliente: baseCliente, paga: false, externalReference: `${checkoutRef}` };
+        const passagemVolta = { cliente: baseCliente, paga: false, externalReference: `${checkoutRef}` };
+        bodies.push({ viagem: { dataViagem: reserva.dataIso, percurso: reserva.origem === 'sjp-the' ? 'São João dos Patos - Teresina' : 'Teresina - São João dos Patos' }, passagem: passagemIda });
+        bodies.push({ viagem: { dataViagem: reserva.dataIso, percurso: reserva.origem === 'sjp-the' ? 'São João dos Patos - Teresina' : 'Teresina - São João dos Patos' }, passagem: passagemVolta });
+      } else {
+        const passagem = { cliente: baseCliente, paga: false, externalReference: checkoutRef };
+        bodies.push({ viagem: { dataViagem: reserva.dataIso, percurso: reserva.origem === 'sjp-the' ? 'São João dos Patos - Teresina' : 'Teresina - São João dos Patos' }, passagem });
+      }
     }
 
     // Check if in development mode - skip Mercado Pago and redirect to manual confirmation
@@ -239,13 +246,26 @@ export default function Home() {
       }
 
       const prefBody = {
-        items: [
+        items: roundTrip ? [
+          {
+            title: `Passagem WF - Ida (${reserva.origem === 'sjp-the' ? 'SJP → Teresina' : 'Teresina → SJP'})`,
+            quantity: reserva.passageiros,
+            unit_price: unitPriceNumber,
+            currency_id: 'BRL',
+          },
+          {
+            title: `Passagem WF - Volta (${reserva.origem === 'sjp-the' ? 'Teresina → SJP' : 'SJP → Teresina'})`,
+            quantity: reserva.passageiros,
+            unit_price: unitPriceNumber,
+            currency_id: 'BRL',
+          },
+        ] : [
           {
             title: `Passagem WF - ${reserva.origem === 'sjp-the' ? 'SJP → Teresina' : 'Teresina → SJP'}`,
             quantity: reserva.passageiros,
             unit_price: unitPriceNumber,
             currency_id: 'BRL',
-          },
+          }
         ],
         payer: {
           name: modalCliente.name,
@@ -478,9 +498,15 @@ export default function Home() {
               </FormControl>
 
               {paymentMethod === 'mercadopago' && (
-                <Typography variant="body2" color="text.secondary">
-                  Valor por passageiro: <strong>R$ {valorUnitario.toFixed(2)}</strong>
-                </Typography>
+                <>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                    Valor por passageiro: <strong>R$ {valorUnitario.toFixed(2)}</strong>
+                  </Typography>
+                  <FormControlLabel
+                    control={<input type="checkbox" checked={roundTrip} onChange={(e) => setRoundTrip(e.target.checked)} />}
+                    label="Ida e Volta (pagar ida e volta)"
+                  />
+                </>
               )}
 
             </Stack>

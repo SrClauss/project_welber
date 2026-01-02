@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { findViagemByExternalReference, markPassagensPaidByExternalReference } from '../../../../lib/viagemService';
+import { findViagemByExternalReference, markPassagensPaidByExternalReference, deletePassagensByExternalReference } from '../../../../lib/viagemService';
 
 export async function GET(req: Request, context: any) {
   const params = await Promise.resolve(context?.params);
@@ -37,6 +37,38 @@ export async function POST(req: Request, context: any) {
     return NextResponse.json({ ok: true, updated });
   } catch (err) {
     console.error('confirm-payment error:', err);
+    return NextResponse.json({ error: String(err) }, { status: 500 });
+  }
+}
+
+export async function DELETE(req: Request, context: any) {
+  const params = await Promise.resolve(context?.params);
+  const id = typeof params?.id === 'string' ? params.id : String(params?.id ?? '');
+  if (!id) return NextResponse.json({ error: 'ID da reserva ausente' }, { status: 400 });
+
+  // Require admin auth to delete reservation(s)
+  const authHeader = req.headers.get('Authorization');
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return NextResponse.json({ error: 'Não autorizado. Token de autenticação ausente.' }, { status: 401 });
+  }
+  const idToken = authHeader.split('Bearer ')[1];
+
+  try {
+    const { verifyUserToken } = await import('../../../../lib/firebaseServerService');
+    await verifyUserToken(idToken);
+  } catch (err) {
+    console.error('Token verification failed:', err);
+    return NextResponse.json({ error: 'Token inválido ou expirado' }, { status: 401 });
+  }
+
+  try {
+    const result = await deletePassagensByExternalReference(id);
+    if (result.deleted === 0) {
+      return NextResponse.json({ ok: true, deleted: 0, message: 'Nenhuma passagem encontrada com essa referência' }, { status: 200 });
+    }
+    return NextResponse.json({ ok: true, deleted: result.deleted, viagensDeleted: result.viagensDeleted }, { status: 200 });
+  } catch (err) {
+    console.error('delete reservation error:', err);
     return NextResponse.json({ error: String(err) }, { status: 500 });
   }
 }

@@ -265,3 +265,36 @@ export async function markPassagensPaidByExternalReference(externalReference: st
   });
   return updated;
 }
+
+export async function deletePassagensByExternalReference(externalReference: string) {
+  const db = await getFirestore();
+  const { runTransaction } = await import('firebase/firestore');
+
+  let deleted = 0;
+  let viagensDeleted = 0;
+
+  await runTransaction(db, async (tx) => {
+    const { collection, getDocs } = await import('firebase/firestore');
+    const col = collection(db, 'viagens');
+    const snap = await getDocs(col);
+    for (const doc of snap.docs) {
+      const data = doc.data();
+      const passagens: Passagem[] = Array.isArray(data.passagens) ? data.passagens as Passagem[] : [];
+      const remaining = passagens.filter(p => p.externalReference !== externalReference);
+      const removed = passagens.length - remaining.length;
+      if (removed > 0) {
+        if (remaining.length === 0) {
+          // delete entire viagem doc
+          await tx.delete(doc.ref);
+          viagensDeleted += 1;
+          deleted += removed;
+        } else {
+          await tx.update(doc.ref, { passagens: sanitizeForFirestore(remaining) });
+          deleted += removed;
+        }
+      }
+    }
+  });
+
+  return { deleted, viagensDeleted };
+}
